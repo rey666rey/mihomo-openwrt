@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-11-04
+
+- Use explicit installer conditionals compatible with both the local ShellCheck version and Ubuntu's CI version. Runtime checks and rollback behavior are unchanged.
+
 ## 0.1.0 — 2026-11-04
 
 Initial public source release.

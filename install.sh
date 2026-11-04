@@ -177,7 +177,9 @@ for cmd in ucode ubus jsonfilter sha256sum awk sed sort cmp df mktemp cp mv chmo
     command -v "$cmd" >/dev/null 2>&1 || fail "Required command is missing: $cmd"
 done
 case "$(uname -m)" in aarch64|arm64) : ;; *) fail 'This version supports ARM64 routers only; its core updater targets Linux ARM64.' ;; esac
-[ -f "$BASE/install.files" ] && [ -f "$BASE/SHA256SUMS" ] || fail 'Payload manifest or checksums are missing.'
+if [ ! -f "$BASE/install.files" ] || [ ! -f "$BASE/SHA256SUMS" ]; then
+    fail 'Payload manifest or checksums are missing.'
+fi
 no_symlinks "$STORE"
 no_symlinks "$APP_TMP"
 STAGE=$(mktemp -d "$TARGET_ROOT/tmp/mihomo-mini-install.XXXXXX") || fail 'Cannot create a private staging directory.'
@@ -192,7 +194,7 @@ while read -r mode src dst extra; do
         [ "$mode" = 755 ] || fail 'The worker must be executable.'
     else [ "$mode" = 644 ] || fail 'Application data files must use mode 644.'; fi
     case "$src" in root/"$dst"|htdocs/"${dst#www/}") : ;; *) fail 'Source and destination do not match.' ;; esac
-    [ -f "$BASE/$src" ] && [ ! -L "$BASE/$src" ] || fail "Payload file missing or symlinked: $src"
+    if [ ! -f "$BASE/$src" ] || [ -L "$BASE/$src" ]; then fail "Payload file missing or symlinked: $src"; fi
     no_symlinks "$BASE/$src"
     no_symlinks "$TARGET_ROOT/$dst"
     [ ! -e "$TARGET_ROOT/$dst" ] || [ -f "$TARGET_ROOT/$dst" ] || fail "Destination is not a regular file: $dst"
@@ -216,10 +218,10 @@ if [ "$MODE" = install ] || [ "$MODE" = check ]; then
     for cmd in curl nft ip setsid gzip nslookup uci; do
         command -v "$cmd" >/dev/null 2>&1 || fail "Required runtime command missing: $cmd"
     done
-    [ "$(uci -q get mihomo.main.conffile)" = /etc/mihomo/config.yaml ] \
+    if [ "$(uci -q get mihomo.main.conffile)" = /etc/mihomo/config.yaml ] \
         && [ "$(uci -q get mihomo.main.workdir)" = /etc/mihomo ] \
-        && [ "$(uci -q get mihomo.main.user)" = root ] \
-        || fail 'The Mihomo UCI service paths or user do not match the supported integration.'
+        && [ "$(uci -q get mihomo.main.user)" = root ]; then :
+    else fail 'The Mihomo UCI service paths or user do not match the supported integration.'; fi
     if grep -Fq 'mihomo-safe-run' "$TARGET_ROOT/etc/init.d/mihomo" \
         && grep -Fq 'mihomo_tproxy_safe' "$TARGET_ROOT/usr/libexec/mihomo-safe-run" \
         && grep -Fq 'table inet mihomo_tproxy_safe' "$TARGET_ROOT/etc/mihomo/tproxy.nft"; then :
@@ -251,8 +253,9 @@ fi
 if [ "$MODE" = restore ]; then
     no_symlinks "$RESTORE"
     case "$RESTORE" in "$STORE"/install-backup-*) : ;; *) fail 'Restore requires a backup inside /etc/mihomo-mini.' ;; esac
-    [ -f "$RESTORE/complete" ] && [ -f "$RESTORE/absent" ] && [ -f "$RESTORE/original.sha256" ] \
-        || fail 'Backup is incomplete. No files were changed.'
+    if [ ! -f "$RESTORE/complete" ] || [ ! -f "$RESTORE/absent" ] || [ ! -f "$RESTORE/original.sha256" ]; then
+        fail 'Backup is incomplete. No files were changed.'
+    fi
     (cd "$RESTORE/files" && sha256sum -c ../original.sha256 > "$STAGE/backup-check.log" 2>&1) \
         || { [ ! -s "$RESTORE/original.sha256" ] || fail 'Backup checksum mismatch.'; }
     while read -r mode src dst; do

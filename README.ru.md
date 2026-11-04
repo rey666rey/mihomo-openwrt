@@ -17,7 +17,7 @@
 
 Проект вырос из работающей конфигурации роутера. Задача простая: сделать повседневные действия понятными и сохранить возможность вернуться к прямому интернету.
 
-> **Важно проверить совместимость.** Версия 0.1.0 рассчитана на описанную ниже интеграцию `mihomo-safe-run` / `mihomo_tproxy_safe`. Установщик добавляет только приложение LuCI. Чистый OpenWrt, OpenClash, Nikki и произвольная установка Mihomo автоматически совместимыми не становятся. Начните с `--check`.
+> **Важно проверить совместимость.** Версия 0.1.1 рассчитана на описанную ниже интеграцию `mihomo-safe-run` / `mihomo_tproxy_safe`. Установщик добавляет только приложение LuCI. Чистый OpenWrt, OpenClash, Nikki и произвольная установка Mihomo автоматически совместимыми не становятся. Начните с `--check`.
 
 ## Одна страница, четыре вкладки
 
@@ -67,10 +67,10 @@ flowchart LR
 ```sh
 cd /tmp
 curl -fL --proto '=https' --tlsv1.2 \
-  https://github.com/rey666rey/mihomo-openwrt/archive/refs/tags/v0.1.0.tar.gz \
-  -o mihomo-openwrt-v0.1.0.tar.gz
-tar -xzf mihomo-openwrt-v0.1.0.tar.gz
-cd mihomo-openwrt-0.1.0
+  https://github.com/rey666rey/mihomo-openwrt/archive/refs/tags/v0.1.1.tar.gz \
+  -o mihomo-openwrt-v0.1.1.tar.gz
+tar -xzf mihomo-openwrt-v0.1.1.tar.gz
+cd mihomo-openwrt-0.1.1
 
 sh install.sh --check
 sh install.sh

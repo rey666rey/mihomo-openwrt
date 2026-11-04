@@ -2,7 +2,7 @@
 
 [English overview](../README.md) · [Обзор на русском](../README.ru.md)
 
-Version 0.1.0 intentionally supports one existing integration. Installing it on an unrelated Mihomo service can make service controls misleading, so the installer rejects recognizable mismatches instead of configuring the network itself.
+Version 0.1.x intentionally supports one existing integration. Installing it on an unrelated Mihomo service can make service controls misleading, so the installer rejects recognizable mismatches instead of configuring the network itself.
 
 ## Runtime assumptions
 
