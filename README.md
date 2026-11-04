@@ -17,7 +17,7 @@
 
 The project began with a working router setup and a simple goal: make everyday operations clear, while preserving the ability to switch back to direct internet.
 
-> **Compatibility matters.** Version 0.1.1 targets the specific `mihomo-safe-run` / `mihomo_tproxy_safe` integration described below. It installs the LuCI application only. A fresh OpenWrt router, OpenClash, Nikki, or an arbitrary Mihomo service is not automatically compatible. Run `--check` first.
+> **Compatibility matters.** Version 0.1.2 targets the specific `mihomo-safe-run` / `mihomo_tproxy_safe` integration described below. It installs the LuCI application only. A fresh OpenWrt router, OpenClash, Nikki, or an arbitrary Mihomo service is not automatically compatible. Run `--check` first.
 
 ## One page, four tabs
 
@@ -67,10 +67,10 @@ Download a complete tagged source archive **on the router**, inspect it, and run
 ```sh
 cd /tmp
 curl -fL --proto '=https' --tlsv1.2 \
-  https://github.com/rey666rey/mihomo-openwrt/archive/refs/tags/v0.1.1.tar.gz \
-  -o mihomo-openwrt-v0.1.1.tar.gz
-tar -xzf mihomo-openwrt-v0.1.1.tar.gz
-cd mihomo-openwrt-0.1.1
+  https://github.com/rey666rey/mihomo-openwrt/archive/refs/tags/v0.1.2.tar.gz \
+  -o mihomo-openwrt-v0.1.2.tar.gz
+tar -xzf mihomo-openwrt-v0.1.2.tar.gz
+cd mihomo-openwrt-0.1.2
 
 sh install.sh --check
 sh install.sh

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-11-04
+
+- Fix core-update storage checks on compressed flash: retain the existing core with hard links when supported, stage writes in bounded batches and measure actual free space after write-back.
+- Preserve a flash reserve during staging; stop/restart the service only after preparation and hash checks succeed. Partial writes and low-space failures leave the active service untouched.
+- Replace redundant old-core RAM copies with an already retained rollback inode; check actual available RAM and gzip extraction size before allocation.
+- Keep the previous persistent backup until the new core passes readiness. Extend isolated failure tests for storage exhaustion and the copy fallback.
+
 ## 0.1.1 — 2026-11-04
 
 - Use explicit installer conditionals compatible with both the local ShellCheck version and Ubuntu's CI version. Runtime checks and rollback behavior are unchanged.

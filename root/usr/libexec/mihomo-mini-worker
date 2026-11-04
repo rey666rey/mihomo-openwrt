@@ -170,9 +170,54 @@ function release() {
 	die('Архив Linux ARM64 не найден.');
 }
 function space(path) {
-	let lines = split(trim(m.capture('df -Pk ' + m.quote(path)).text), '\n');
+	let r = m.capture('df -Pk ' + m.quote(path));
+	let lines = split(trim(r.text), '\n');
 	let cols = split(trim(lines[length(lines) - 1]), /\s+/);
+	if (r.code != 0 || !match(cols[3] || '', /^[0-9]+$/)) die('Не удалось определить свободное место.');
 	return int(cols[3]) * 1024;
+}
+function ram_available() {
+	for (let line in split(fs.readfile('/proc/meminfo') || '', '\n')) {
+		let value = match(line, /^MemAvailable:\s+([0-9]+)\s+kB\s*$/);
+		if (value) return int(value[1]) * 1024;
+	}
+	die('Не удалось определить доступную оперативную память.');
+}
+function memory_for(bytes) {
+	if (!m.core_memory_ready(bytes, space(dir), ram_available()))
+		die('Недостаточно свободной RAM или места в /tmp для следующего шага обновления.');
+}
+function copy_flash(source, destination) {
+	let input = fs.open(source, 'r');
+	if (!input) die('Не удалось открыть исходное ядро.');
+	let output = fs.open(destination, 'wx', 0o755);
+	if (!output) { input.close(); die('Не удалось создать временный файл ядра.'); }
+	try {
+		let remaining = fs.stat(source).size;
+		while (remaining > 0) {
+			active();
+			// Bound each write by its worst-case uncompressed allocation. After
+			// write-back, compressed space is available for the next batch.
+			let budget = space(fs.dirname(destination)) - 4194304 - 1048576;
+			if (budget < 262144) die('На flash недостаточно места с безопасным запасом 4 МиБ.');
+			let batch = min(remaining, budget, 4194304);
+			let copied = 0;
+			while (copied < batch) {
+				let data = input.read(min(262144, batch - copied));
+				if (!length(data) || output.write(data) != length(data)) die('Ошибка записи временного ядра.');
+				copied += length(data);
+			}
+			remaining -= copied;
+			if (!output.flush()) die('Не удалось сбросить буфер временного ядра.');
+			checked(['/bin/sync'], 30000);
+			if (space(fs.dirname(destination)) < 4194304) die('После записи на flash осталось меньше запаса 4 МиБ.');
+		}
+		input.close();
+		if (!output.close()) die('Не удалось завершить запись временного ядра.');
+	} catch(e) {
+		input.close(); output.close();
+		die('Запись ядра отменена. ' + (e.message || e));
+	}
 }
 function core_version(binary) {
 	let code = system(m.quote(binary) + ' -v >' + m.quote(dir + '/version.txt') + ' 2>/dev/null', 5000);
@@ -185,51 +230,79 @@ function replace_core(rollback) {
 	let candidate = dir + '/core';
 	if (rollback) {
 		if (!fs.access(m.STORE + '/core.previous')) die('Резервная копия ядра ещё не создана.');
+		memory_for(fs.stat(m.STORE + '/core.previous').size);
 		checked(['/bin/cp', m.STORE + '/core.previous', candidate]);
 	} else {
 		let r = release();
 		if (before.version == r.version) return 'Уже установлена последняя стабильная версия.';
 		if (req.base != r.version) die('Версия выпуска изменилась. Проверьте обновления ещё раз.');
-		if (space('/tmp') < r.size + fs.stat(m.CORE).size * 2 + 8388608)
-			die('Недостаточно свободной памяти для безопасной загрузки.');
+		memory_for(r.size);
 		progress('Загрузка ARM64 и проверка SHA-256…');
 		checked(['/usr/bin/curl', '-fsSL', '--noproxy', '*', '--proto', '=https', '--proto-redir', '=https',
 			'--max-time', '150', '--max-filesize', '41943040', '-o', dir + '/core.gz', r.url], 155000);
 		if (sha256_file(dir + '/core.gz') != r.sha256) die('SHA-256 не совпал. Обновление отменено.');
+		let unpacked = m.gzip_uncompressed_size(dir + '/core.gz');
+		if (unpacked == null) die('Недопустимый или слишком большой архив ядра.');
+		memory_for(unpacked);
 		if (system('/bin/gzip -dc ' + m.quote(dir + '/core.gz') + ' >' + m.quote(candidate), 30000) != 0)
 			die('Не удалось распаковать архив.');
+		if (fs.stat(candidate)?.size != unpacked) die('Распакованный размер ядра не совпал с архивом.');
+		fs.unlink(dir + '/core.gz');
 		fs.chmod(candidate, 0o755);
 		if (core_version(candidate) != r.version) die('Версия ядра не совпала с выпуском.');
 	}
 	fs.chmod(candidate, 0o755);
 	let version = core_version(candidate);
-	if (space('/overlay') < fs.stat(candidate).size + fs.stat(m.CORE).size + 4194304)
-		die('Недостаточно места для нового ядра и резервной копии.');
 	progress('Проверка ядра на текущей конфигурации…'); validate(fs.readfile(m.CONFIG), candidate); active();
-	checked(['/bin/cp', m.CORE, m.STORE + '/core.previous.new'], 20000);
-	fs.chmod(m.STORE + '/core.previous.new', 0o755);
-	// A separate rollback copy survives both normal update and explicit rollback.
-	checked(['/bin/cp', m.CORE, dir + '/core.original'], 20000);
-	checked(['/bin/cp', candidate, m.CORE + '.mini-new'], 20000); fs.chmod(m.CORE + '.mini-new', 0o755);
-	if (!fs.rename(m.STORE + '/core.previous.new', m.STORE + '/core.previous')) die('Не удалось сохранить прежнее ядро.');
-	let changed = false;
+	let staged_new = m.CORE + '.mini-new', staged_old = m.CORE + '.mini-old';
+	let staged_backup = m.STORE + '/core.previous.new';
+	// Never overwrite potential recovery files left by an unclean shutdown.
+	for (let path in [staged_new, staged_old, staged_backup])
+		if (fs.lstat(path)) die('Найдены файлы прерванного обновления. Сохраните их для восстановления перед повтором.');
+	if (fs.lstat(m.CORE)?.type != 'file') die('Текущее ядро должно быть обычным файлом.');
+	let original_hash = sha256_file(m.CORE), candidate_hash = sha256_file(candidate);
+	let changed = false, service_touched = false;
 	try {
+		progress('Подготовка ядра и резерва; проверка фактического места на flash…');
+		// A hard link retains the existing inode without a second binary's data.
+		// The fallback is checked against real post-write free space as well.
+		if (!m.run(['/bin/ln', m.CORE, staged_old])) copy_flash(m.CORE, staged_old);
+		if (!m.run(['/bin/ln', staged_old, staged_backup])) copy_flash(staged_old, staged_backup);
+		copy_flash(candidate, staged_new); fs.chmod(staged_new, 0o755);
+		if (sha256_file(staged_old) != original_hash || sha256_file(staged_backup) != original_hash
+			|| sha256_file(staged_new) != candidate_hash) die('Ошибка проверки записанного ядра или резерва.');
+		checked(['/bin/sync'], 30000);
+		// UBIFS compresses on write-back: count the real allocations after sync,
+		// while the old service is still untouched. Keep 4 MiB on each target FS.
+		if (space(fs.dirname(m.CORE)) < 4194304 || space(m.STORE) < 4194304)
+			die('После подготовки ядра на flash осталось меньше безопасного запаса 4 МиБ.');
+		if (sha256_file(m.CORE) != original_hash) die('Текущее ядро изменилось во время подготовки. Повторите проверку.');
 		progress('Установка ядра и проверка прежнего режима…'); active();
-		if (before.running) stop();
-		if (!fs.rename(m.CORE + '.mini-new', m.CORE)) die('Не удалось заменить ядро.');
+		if (before.running) { service_touched = true; stop(); }
+		if (!fs.rename(staged_new, m.CORE)) die('Не удалось заменить ядро.');
 		changed = true; active();
 		if (before.running) { start_mode(before.tproxy); restore_selectors(saved); }
+		active();
+		if (!fs.rename(staged_backup, m.STORE + '/core.previous')) die('Не удалось зафиксировать резерв ядра.');
+		checked(['/bin/sync'], 30000);
+		fs.unlink(staged_old);
 		return 'Установлено ядро ' + version + '. ' + (before.running ? 'Прежний режим восстановлен.' : 'Mihomo остаётся выключенным.');
 	} catch(e) {
 		if (changed) {
 			m.cleanup(); m.run(['/etc/init.d/mihomo', 'stop'], 15000);
-			checked(['/bin/cp', dir + '/core.original', m.CORE + '.mini-new'], 20000);
-			fs.chmod(m.CORE + '.mini-new', 0o755);
-			if (!fs.rename(m.CORE + '.mini-new', m.CORE)) { m.direct(); die('Не удалось восстановить ядро. Включён прямой интернет.'); }
+			// Rollback uses the already retained same-directory inode: no free
+			// space for another full copy is required, even after an ENOSPC.
+			if (!fs.rename(staged_old, m.CORE)) {
+				m.direct(); die('Не удалось восстановить ядро. Резерв сохранён, включён прямой интернет.');
+			}
 		}
+		for (let path in [staged_new, staged_old, staged_backup]) fs.unlink(path);
 		if (m.stopped_flag()) m.direct();
-		else if (before.running) { recover_mode(before); restore_selectors(saved); }
-		die('Обновление отменено. Прежнее ядро восстановлено.');
+		else if (service_touched && before.running) {
+			try { recover_mode(before); restore_selectors(saved); }
+			catch(recovery) { m.direct(); die('Прежнее ядро возвращено, но запуск не удался. Включён прямой интернет.'); }
+		}
+		die('Обновление отменено; прежнее ядро сохранено. ' + (e.message || e));
 	}
 }
 function diagnostics() {
@@ -291,7 +364,7 @@ try {
 	push(log, { time: result.finished, action: req.action, state: result.state, message: result.message });
 	while (length(log) > 30) shift(log);
 	m.atomic(m.TMP + '/journal.json', sprintf('%J', log));
-	for (let file in ['request.json', 'candidate.yaml', 'auth', 'body.json', 'api.json', 'validation.private.log', 'private.log', 'rollback.yaml', 'core', 'core.gz', 'core.original', 'release.json', 'version.txt'])
+	for (let file in ['request.json', 'candidate.yaml', 'auth', 'body.json', 'api.json', 'validation.private.log', 'private.log', 'rollback.yaml', 'core', 'core.gz', 'release.json', 'version.txt'])
 		fs.unlink(dir + '/' + file);
 	m.run(['/bin/rm', '-rf', dir + '/check']);
 	fs.unlink(m.TMP + '/lock/owner.json'); fs.rmdir(m.TMP + '/lock');

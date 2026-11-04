@@ -35,6 +35,23 @@ export function init() {
 };
 export function hash_config() { return sha256(fs.readfile(CONFIG) || ''); };
 export function stopped_flag() { return fs.access(TMP + '/emergency'); };
+// Evaluate the next allocation against *remaining* tmpfs and RAM, not the
+// logical sizes of several copies which the update no longer creates.
+export function core_memory_ready(bytes, tmp_free, ram_free) {
+	return bytes != null && bytes > 0 && bytes <= 134217728
+		&& tmp_free != null && ram_free != null
+		&& tmp_free >= bytes + 8388608 && ram_free >= bytes + 33554432;
+};
+export function gzip_uncompressed_size(path) {
+	let f = fs.open(path, 'r');
+	if (!f) return null;
+	let header = f.read(3);
+	if (header != '\x1f\x8b\x08' || !f.seek(-4, 2)) { f.close(); return null; }
+	let tail = f.read(4); f.close();
+	if (length(tail) != 4) return null;
+	let size = ord(tail, 0) + ord(tail, 1) * 256 + ord(tail, 2) * 65536 + ord(tail, 3) * 16777216;
+	return size > 0 && size <= 134217728 ? size : null;
+};
 export function cleanup() {
 	run(['/usr/sbin/nft', 'delete', 'table', 'inet', 'mihomo_tproxy_safe']);
 	// Only this application's mark/table/priority combination; LTE is independent.

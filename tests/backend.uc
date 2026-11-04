@@ -21,6 +21,20 @@ assert(contract(original + '\nmixed-port: 7890\n') != null, 'duplicate root reje
 assert(contract(original + '\nTun:\n  enable: true\n') != null, 'case collision rejected');
 assert(contract(original + '\n<<: *other\n') != null, 'root merge rejected');
 assert(contract(original + '\n\tbad: true\n') != null, 'tabs rejected');
+let mib = 1048576;
+assert(m.core_memory_ready(60*mib, 68*mib, 92*mib), 'one candidate fits with exact RAM/tmpfs reserves');
+assert(!m.core_memory_ready(60*mib, 68*mib-1, 92*mib), 'tmpfs reserve enforced');
+assert(!m.core_memory_ready(60*mib, 68*mib, 92*mib-1), 'RAM reserve enforced');
+assert(!m.core_memory_ready(60*mib, 200*mib, null), 'unknown RAM refused');
+assert(!m.core_memory_ready(129*mib, 200*mib, 300*mib), 'oversized candidate refused');
+let fixture = fs.dirname(m.CONFIG) + '/gzip-size';
+fs.writefile(fixture, '\x1f\x8b\x08synthetic-size-only\x56\x34\x12\x00');
+assert(m.gzip_uncompressed_size(fixture) == 1193046, 'gzip ISIZE little-endian decoded');
+fs.writefile(fixture, '\x1f\x8b\x08oversized\x00\x00\x00\x09');
+assert(m.gzip_uncompressed_size(fixture) == null, 'gzip payload over limit refused');
+fs.writefile(fixture, 'not-a-gzip');
+assert(m.gzip_uncompressed_size(fixture) == null, 'invalid archive header refused');
+fs.unlink(fixture);
 
 function wait(id) {
 	for (let i = 0; i < 75; i++) {

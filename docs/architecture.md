@@ -42,9 +42,13 @@ An unchanged config is validated but does not cause a reload. A stopped service 
 
 ## Core update
 
-The worker queries the official latest stable GitHub release, selects one fixed Linux ARM64 asset name and requires an asset SHA-256. The downloaded archive, reported version, execution and config validation are checked before replacement. Space checks cover temporary data, the new core and backup headroom.
+The worker queries the official latest stable GitHub release, selects one fixed Linux ARM64 asset name and requires an asset SHA-256. The downloaded archive, reported version, execution and config validation are checked before replacement. RAM/tmpfs checks use the next allocation, the verified gzip's uncompressed size (at most 128 MiB), 8 MiB of tmpfs headroom and 32 MiB of available-RAM headroom. The archive is discarded after extraction; no redundant old-core copy is made in RAM.
 
-A core update requires restarting a running service. It first removes interception through the existing service integration, replaces the binary atomically, and restores the prior runtime mode and surviving selector choices. A candidate readiness failure attempts to restore the original binary and prior mode. Failure of the existing service integration can still require operator recovery.
+The active core's inode is retained through hard links where supported; otherwise a checked copy is used. A same-directory retained core supports atomic rollback without allocating another full binary after failure. The previous persistent backup is committed only after candidate readiness succeeds. An interrupted operation's existing staging files are refused rather than overwritten.
+
+On compressed flash, adding the logical sizes of both binaries overestimates required storage. Writes instead proceed in batches of at most 4 MiB, bounded by the currently available space minus a 4 MiB reserve and 1 MiB metadata allowance. Each batch is flushed and synchronized before space is measured again. Recorded hashes and post-write free space are checked before the existing service is stopped. Concurrent unrelated writers can still consume storage; these are repeated headroom checks, not a filesystem reservation.
+
+A core update requires restarting a running service. After staging has succeeded, it removes interception through the existing service integration, replaces the binary atomically, and restores the prior runtime mode and surviving selector choices. Preparation failures remove partial staging without restarting the service. A candidate readiness failure attempts to restore the retained original binary and prior mode. Failure of the existing service integration can still require operator recovery.
 
 ## Emergency direct mode and concurrency
 

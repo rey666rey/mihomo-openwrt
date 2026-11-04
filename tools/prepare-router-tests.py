@@ -4,6 +4,11 @@ import argparse
 from pathlib import Path
 import re
 import shutil
+import base64
+import gzip
+import hashlib
+import json
+import os
 
 PROJECT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
@@ -34,13 +39,33 @@ for name in ('basic', 'faults'):
 };
 """ + source[end:]
         source = source.replace('export function capture(cmd) {', "export function capture(cmd) {\n\tif (index(cmd, 'nft list') == 0) return {code:0, text:''};")
+        source = source.replace('export function capture(cmd) {', "export function capture(cmd) {\n"
+            "\tif (index(cmd, 'df -Pk') == 0) {\n"
+            "\t\tlet free = index(cmd, '/jobs/') >= 0 ? '100000' : (fs.readfile(" + repr(remote + '/free-kib') + ") || '100000');\n"
+            "\t\treturn {code:0, text:'Filesystem 1K-blocks Used Available Use% Mounted\\nfixture 200000 1 ' + trim(free) + ' 1% /\\n'};\n\t}\n")
         ws = ws.replace('time() + 120', 'time() + 2')
+        # Inject an I/O failure at the flash-write boundary; every target is
+        # still in the private fixture directory, never the real core path.
+        ws = ws.replace('function copy_flash(source, destination) {',
+            'function copy_flash(source, destination) {\n'
+            '\tif (fs.access(' + repr(remote + '/fail-copy') + ') && destination == m.CORE + ".mini-new") {\n'
+            '\t\tfs.writefile(destination, "partial-write"); die("Injected flash write failure");\n\t}\n')
         for filename in ('fake-command.uc', 'rollback.uc'):
             text = (PROJECT / 'tests' / filename).read_text().replace('/tmp/mihomo-mini-faults', remote)
             (dest / filename).write_text(text)
         core = dest / 'core'
         core.write_text('#!/bin/sh\n# OLD\necho "Mihomo Meta v9.0.0 linux arm64"\nexit 0\n')
         core.chmod(0o755)
+        # A valid shell stub with high-entropy comments keeps the compressed
+        # fixture above the release parser's real 1 MiB asset-size floor.
+        core_bytes = b'#!/bin/sh\n# NEW\necho "Mihomo Meta v9.0.1 linux arm64"\nexit 0\n#' + base64.b64encode(os.urandom(3500000)) + b'\n'
+        archive = gzip.compress(core_bytes, mtime=0)
+        (dest / 'fixture-core.gz').write_bytes(archive)
+        (dest / 'fixture-release.json').write_text(json.dumps({
+            'tag_name': 'v9.0.1', 'draft': False, 'prerelease': False,
+            'assets': [{'name': 'mihomo-linux-arm64-v9.0.1.gz', 'size': len(archive),
+                        'digest': 'sha256:' + hashlib.sha256(archive).hexdigest(),
+                        'browser_download_url': 'https://github.com/MetaCubeX/mihomo/releases/download/v9.0.1/mihomo-linux-arm64-v9.0.1.gz'}]}))
     (dest / 'modules/mihomo-mini.uc').write_text(source)
     shutil.copy(PROJECT / 'root/usr/share/ucode/mihomo-mini-contract.uc', dest / 'modules')
     shutil.copy(PROJECT / 'tests/fixtures/config.yaml', dest / 'config.yaml')

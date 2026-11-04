@@ -215,7 +215,7 @@ if [ "$MODE" = install ] || [ "$MODE" = check ]; then
     for required in etc/mihomo/config.yaml etc/mihomo/tproxy.nft etc/config/mihomo; do
         [ -s "$TARGET_ROOT/$required" ] || fail "Required integration file missing: /$required"
     done
-    for cmd in curl nft ip setsid gzip nslookup uci; do
+    for cmd in curl nft ip setsid gzip nslookup uci sync; do
         command -v "$cmd" >/dev/null 2>&1 || fail "Required runtime command missing: $cmd"
     done
     if [ "$(uci -q get mihomo.main.conffile)" = /etc/mihomo/config.yaml ] \

@@ -34,7 +34,7 @@ Replace `openwrt` with your SSH alias/host. The runner:
 1. Creates a private, uniquely named `/tmp` staging directory on that host.
 2. Generates modules with test-only paths and a **synthetic config**; no real subscription or secret is copied into the fixture.
 3. Runs the real Mihomo `-t` check for valid/invalid YAML and tests guarded fields, job exclusion, stale hashes and no-op application.
-4. Runs fault-injection tests for config rollback and failed core readiness. Service/routing/API commands are replaced with restrictive stubs, and all mutated files stay under the test directory.
+4. Runs fault-injection tests for config rollback, failed core readiness, low flash headroom, a partial write, loss of headroom during a write and a successful synthetic gzip update using the copy fallback. Service/routing/API commands are replaced with restrictive stubs, and all mutated files stay under the test directory. Memory budgets and gzip size parsing are tested separately.
 5. Compares protected file hashes and service state before/after, then removes its own temporary directory.
 
 The tests may read existing assets through symlinks during validation. They do not change actual network policy, core, config or service state. Unexpected termination can leave the private directory in `/tmp`; its exact prefix is `mihomo-mini-public-tests.`. Inspect the specific abandoned directory before removing it.
