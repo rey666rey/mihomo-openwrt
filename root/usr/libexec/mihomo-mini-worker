@@ -1,0 +1,302 @@
+#!/usr/bin/ucode
+'use strict';
+import * as fs from 'fs';
+import { sha256, sha256_file } from 'digest';
+import { contract } from 'mihomo-mini-contract';
+import * as m from 'mihomo-mini';
+
+let id = ARGV[0];
+if (!match(id || '', /^job-[a-zA-Z0-9]+$/)) exit(1);
+const dir = m.TMP + '/' + id;
+let req = m.readjson(dir + '/request.json');
+if (!req) exit(1);
+const RESULT = dir + '/result.json';
+let owner = m.readjson(m.TMP + '/lock/owner.json');
+if (owner?.id != id) exit(1);
+owner.pid = int(fs.readlink('/proc/self')); m.atomic(m.TMP + '/lock/owner.json', sprintf('%J', owner));
+let result = { state: 'running', action: req.action, created: owner.created, message: 'Выполняется…' };
+
+function progress(message) {
+	result.message = message;
+	m.atomic(RESULT, sprintf('%J', result));
+}
+function active() { if (m.stopped_flag()) die('Действие отменено кнопкой «Прямой интернет».'); }
+function checked(args, timeout) {
+	if (!m.run(args, timeout)) die('Не удалось выполнить операцию. Изменения отменены.');
+}
+function setting(key, value) { checked(['/sbin/uci', 'set', 'mihomo.main.' + key + '=' + value]); }
+function commit() { checked(['/sbin/uci', 'commit', 'mihomo']); }
+function secret(text) {
+	for (let line in split(text || '', '\n')) {
+		let s = match(line, /^secret:\s*([a-zA-Z0-9_-]+)\s*$/);
+		if (s) return s[1];
+	}
+	die('Не удалось прочитать ключ локальной панели.');
+}
+function api(method, path, data, token) {
+	m.save(dir + '/auth', 'Authorization: Bearer ' + (token || secret(fs.readfile(m.CONFIG))) + '\n');
+	let args = ['/usr/bin/curl', '-fsS', '--noproxy', '*', '--max-time', '12', '--max-filesize', '4194304',
+		'-X', method, '-H', '@' + dir + '/auth', '-H', 'Content-Type: application/json', '-o', dir + '/api.json'];
+	if (data != null) {
+		m.save(dir + '/body.json', sprintf('%J', data)); push(args, '--data-binary', '@' + dir + '/body.json');
+	}
+	push(args, 'http://192.168.1.1:9090' + path);
+	let ok = m.run(args, 15000);
+	return { ok, body: ok ? m.readjson(dir + '/api.json') : null };
+}
+function urlpart(s) {
+	let out = '';
+	for (let i = 0; i < length(s); i++) {
+		let c = substr(s, i, 1);
+		out += match(c, /^[a-zA-Z0-9_.~-]$/) ? c : sprintf('%%%02X', ord(c));
+	}
+	return out;
+}
+function selectors() {
+	let r = api('GET', '/proxies');
+	if (!r.ok) die('Локальный API Mihomo не отвечает.');
+	let out = {};
+	for (let name, p in (r.body?.proxies || {})) if (p.type == 'Selector') out[name] = p.now;
+	return out;
+}
+function restore_selectors(saved) {
+	let r = api('GET', '/proxies');
+	if (!r.ok) die('Не удалось проверить выбор узлов.');
+	let count = 0;
+	for (let name, value in saved) {
+		let p = r.body?.proxies?.[name];
+		if (!p || p.type != 'Selector' || index(p.all || [], value) < 0) continue;
+		if (p.now != value && !api('PUT', '/proxies/' + urlpart(name), { name: value }).ok)
+			die('Не удалось восстановить выбор узлов.');
+		count++;
+	}
+	return count;
+}
+function proxy_check() {
+	return m.run(['/usr/bin/curl', '-fsS', '--noproxy', '', '--max-time', '10', '-x', 'http://127.0.0.1:7890',
+		'-o', '/dev/null', 'https://www.youtube.com/generate_204'], 12000);
+}
+function wait_ready(tp) {
+	let deadline = time() + 120;
+	while (time() < deadline) {
+		active();
+		if (api('GET', '/version').ok && (!tp || m.capture('nft list table inet mihomo_tproxy_safe').code == 0)) {
+			if (!tp || proxy_check()) return;
+		}
+		m.run(['/bin/sleep', '1'], 2000);
+	}
+	die('Служба не прошла проверку готовности.');
+}
+function stop() {
+	m.cleanup(); checked(['/etc/init.d/mihomo', 'stop'], 15000); m.cleanup();
+}
+function start_mode(tp) {
+	active(); setting('enabled', '1'); setting('tproxy_enabled', tp ? '1' : '0'); commit();
+	active(); checked(['/etc/init.d/mihomo', 'start'], 15000); wait_ready(tp);
+}
+function recover_mode(before) {
+	if (m.stopped_flag()) { m.direct(); return; }
+	stop();
+	if (before.running) start_mode(before.tproxy);
+}
+function validate(text, binary) {
+	let error = contract(text);
+	if (error) die(error);
+	m.save(dir + '/candidate.yaml', text);
+	let wd = dir + '/check'; fs.mkdir(wd, 0o700);
+	for (let name in (fs.lsdir('/etc/mihomo') || [])) {
+		if (name == 'cache.db' || index(name, 'config') == 0) continue;
+		if (!fs.access(wd + '/' + name)) fs.symlink('/etc/mihomo/' + name, wd + '/' + name);
+	}
+	let cmd = m.quote(binary || m.CORE) + ' -t -f ' + m.quote(dir + '/candidate.yaml') + ' -d ' + m.quote(wd)
+		+ ' >' + m.quote(dir + '/validation.private.log') + ' 2>&1';
+	if (system(cmd, 45000) != 0) {
+		let log = fs.readfile(dir + '/validation.private.log') || '';
+		let line = match(log, /line\s+([0-9]+)/);
+		die('Mihomo отклонил конфигурацию.' + (line ? ' Проверьте строку ' + line[1] + '.' : ' Проверьте YAML, имена групп и провайдеров.'));
+	}
+}
+function apply_config() {
+	if (req.base != m.hash_config()) die('Конфигурация уже изменилась. Загрузите её заново перед сохранением.');
+	progress('Проверка конфигурации…'); validate(req.content); active();
+	if (req.base != m.hash_config()) die('Конфигурация изменилась во время проверки. Загрузите её заново.');
+	let old = fs.readfile(m.CONFIG);
+	if (old == req.content) return 'Изменений нет. Проверка конфигурации успешна.';
+	let before = m.status(), saved = before.running ? selectors() : {};
+	m.save(dir + '/rollback.yaml', old);
+	m.atomic(m.STORE + '/config.previous.yaml', old);
+	let changed = false;
+	try {
+		active(); m.atomic(m.CONFIG, req.content); changed = true;
+		if (before.running) {
+			progress('Применение и проверка конфигурации…');
+			if (!api('PUT', '/configs?force=false', { path: m.CONFIG }, secret(old)).ok)
+				die('Ядро не приняло новую конфигурацию.');
+			restore_selectors(saved); active();
+			if (!api('GET', '/version').ok || (before.tproxy && !proxy_check()))
+				die('Конфигурация не прошла проверку подключения.');
+		}
+		return before.running ? 'Конфигурация применена. Выбор существующих узлов сохранён.' : 'Конфигурация сохранена. Mihomo остаётся выключенным.';
+	} catch(e) {
+		if (changed) {
+			m.atomic(m.CONFIG, old);
+			if (before.running && !m.stopped_flag()) {
+				let reverted = api('PUT', '/configs?force=false', { path: m.CONFIG }, secret(req.content));
+				if (!reverted.ok) reverted = api('PUT', '/configs?force=false', { path: m.CONFIG }, secret(old));
+				if (reverted.ok) { restore_selectors(saved); active(); }
+				else { recover_mode(before); restore_selectors(saved); }
+			}
+		}
+		if (m.stopped_flag()) m.direct();
+		die('Новая конфигурация отменена; прежний файл восстановлен. ' + (e.message || e));
+	}
+}
+function release() {
+	progress('Проверка стабильного выпуска на GitHub…');
+	checked(['/usr/bin/curl', '-fsSL', '--noproxy', '*', '--proto', '=https', '--max-time', '25',
+		'--max-filesize', '1048576', '-H', 'Accept: application/vnd.github+json',
+		'-o', dir + '/release.json', 'https://api.github.com/repos/MetaCubeX/mihomo/releases/latest'], 28000);
+	let j = m.readjson(dir + '/release.json');
+	if (j?.prerelease || j?.draft || !match(j?.tag_name || '', /^v[0-9]+\.[0-9]+\.[0-9]+$/))
+		die('Не удалось определить стабильный выпуск.');
+	let name = 'mihomo-linux-arm64-' + j.tag_name + '.gz';
+	for (let a in (j.assets || [])) if (a.name == name) {
+		let url = 'https://github.com/MetaCubeX/mihomo/releases/download/' + j.tag_name + '/' + name;
+		if (a.browser_download_url != url || !match(a.digest || '', /^sha256:[a-f0-9]{64}$/)
+			|| a.size < 1048576 || a.size > 41943040) die('Выпуск не содержит подходящий архив с SHA-256.');
+		let out = { version: j.tag_name, name, url, sha256: substr(a.digest, 7), size: a.size, checked: time() };
+		m.atomic(m.TMP + '/release.json', sprintf('%J', out)); return out;
+	}
+	die('Архив Linux ARM64 не найден.');
+}
+function space(path) {
+	let lines = split(trim(m.capture('df -Pk ' + m.quote(path)).text), '\n');
+	let cols = split(trim(lines[length(lines) - 1]), /\s+/);
+	return int(cols[3]) * 1024;
+}
+function core_version(binary) {
+	let code = system(m.quote(binary) + ' -v >' + m.quote(dir + '/version.txt') + ' 2>/dev/null', 5000);
+	let v = match(fs.readfile(dir + '/version.txt') || '', /Mihomo\s+(Meta\s+)?(v[0-9.]+)/);
+	if (code != 0 || !v) die('Загруженное ядро не запускается на роутере.');
+	return v[2];
+}
+function replace_core(rollback) {
+	let before = m.status(), saved = before.running ? selectors() : {};
+	let candidate = dir + '/core';
+	if (rollback) {
+		if (!fs.access(m.STORE + '/core.previous')) die('Резервная копия ядра ещё не создана.');
+		checked(['/bin/cp', m.STORE + '/core.previous', candidate]);
+	} else {
+		let r = release();
+		if (before.version == r.version) return 'Уже установлена последняя стабильная версия.';
+		if (req.base != r.version) die('Версия выпуска изменилась. Проверьте обновления ещё раз.');
+		if (space('/tmp') < r.size + fs.stat(m.CORE).size * 2 + 8388608)
+			die('Недостаточно свободной памяти для безопасной загрузки.');
+		progress('Загрузка ARM64 и проверка SHA-256…');
+		checked(['/usr/bin/curl', '-fsSL', '--noproxy', '*', '--proto', '=https', '--proto-redir', '=https',
+			'--max-time', '150', '--max-filesize', '41943040', '-o', dir + '/core.gz', r.url], 155000);
+		if (sha256_file(dir + '/core.gz') != r.sha256) die('SHA-256 не совпал. Обновление отменено.');
+		if (system('/bin/gzip -dc ' + m.quote(dir + '/core.gz') + ' >' + m.quote(candidate), 30000) != 0)
+			die('Не удалось распаковать архив.');
+		fs.chmod(candidate, 0o755);
+		if (core_version(candidate) != r.version) die('Версия ядра не совпала с выпуском.');
+	}
+	fs.chmod(candidate, 0o755);
+	let version = core_version(candidate);
+	if (space('/overlay') < fs.stat(candidate).size + fs.stat(m.CORE).size + 4194304)
+		die('Недостаточно места для нового ядра и резервной копии.');
+	progress('Проверка ядра на текущей конфигурации…'); validate(fs.readfile(m.CONFIG), candidate); active();
+	checked(['/bin/cp', m.CORE, m.STORE + '/core.previous.new'], 20000);
+	fs.chmod(m.STORE + '/core.previous.new', 0o755);
+	// A separate rollback copy survives both normal update and explicit rollback.
+	checked(['/bin/cp', m.CORE, dir + '/core.original'], 20000);
+	checked(['/bin/cp', candidate, m.CORE + '.mini-new'], 20000); fs.chmod(m.CORE + '.mini-new', 0o755);
+	if (!fs.rename(m.STORE + '/core.previous.new', m.STORE + '/core.previous')) die('Не удалось сохранить прежнее ядро.');
+	let changed = false;
+	try {
+		progress('Установка ядра и проверка прежнего режима…'); active();
+		if (before.running) stop();
+		if (!fs.rename(m.CORE + '.mini-new', m.CORE)) die('Не удалось заменить ядро.');
+		changed = true; active();
+		if (before.running) { start_mode(before.tproxy); restore_selectors(saved); }
+		return 'Установлено ядро ' + version + '. ' + (before.running ? 'Прежний режим восстановлен.' : 'Mihomo остаётся выключенным.');
+	} catch(e) {
+		if (changed) {
+			m.cleanup(); m.run(['/etc/init.d/mihomo', 'stop'], 15000);
+			checked(['/bin/cp', dir + '/core.original', m.CORE + '.mini-new'], 20000);
+			fs.chmod(m.CORE + '.mini-new', 0o755);
+			if (!fs.rename(m.CORE + '.mini-new', m.CORE)) { m.direct(); die('Не удалось восстановить ядро. Включён прямой интернет.'); }
+		}
+		if (m.stopped_flag()) m.direct();
+		else if (before.running) { recover_mode(before); restore_selectors(saved); }
+		die('Обновление отменено. Прежнее ядро восстановлено.');
+	}
+}
+function diagnostics() {
+	progress('Проверка DNS, прямого выхода и Mihomo…');
+	let direct = m.run(['/usr/bin/curl', '-fsS', '--noproxy', '*', '--max-time', '10',
+		'-o', '/dev/null', 'https://www.gstatic.com/generate_204'], 12000);
+	let dns = m.capture('nslookup example.com 192.168.1.1').code == 0;
+	let s = m.status();
+	result.diagnostics = { direct, dns, proxy: s.running ? proxy_check() : null, api: s.running ? api('GET', '/version').ok : null };
+	return 'Проверка завершена. Результаты относятся к запросам с роутера.';
+}
+function action() {
+	switch (req.action) {
+	case 'validate': progress('Проверка YAML и провайдеров…'); validate(req.content); result.hash = sha256(req.content); return 'Конфигурация прошла проверку Mihomo.';
+	case 'apply': return apply_config();
+	case 'check_update': result.release = release(); return 'Последний стабильный выпуск: ' + result.release.version + '.';
+	case 'update': return replace_core(false);
+	case 'rollback_core': return replace_core(true);
+	case 'diagnostics': return diagnostics();
+	case 'autostart_on': {
+		let s = m.status(); if (!s.running) die('Сначала запустите Mihomo и выберите режим.');
+		active(); setting('enabled', '1'); setting('tproxy_enabled', s.tproxy ? '1' : '0'); commit();
+		checked(['/etc/init.d/mihomo', 'enable']); return 'Автозапуск включён с текущим режимом.';
+	}
+	case 'autostart_off': checked(['/etc/init.d/mihomo', 'disable']); return 'Автозапуск отключён.';
+	case 'stop': stop(); return 'Mihomo остановлен, правила TProxy сняты.';
+	default: {
+		let before = m.status();
+		if (req.action == 'start' && before.running) return 'Mihomo уже работает.';
+		if ((req.action == 'tproxy_on' || req.action == 'tproxy_off' || req.action == 'restart') && !before.running)
+			die('Сначала запустите ядро.');
+		let tp = req.action == 'tproxy_on' || (req.action == 'restart' && before.tproxy);
+		progress(tp ? 'Проверка ядра перед включением TProxy…' : 'Запуск ядра без перехвата…');
+		validate(fs.readfile(m.CONFIG));
+		let saved = before.running ? selectors() : {};
+		try { active(); stop(); start_mode(tp); restore_selectors(saved); }
+		catch(e) {
+			if (!m.stopped_flag()) {
+				try { recover_mode(before); if (before.running) restore_selectors(saved); }
+				catch(recovery) { m.direct(); die('Запуск не удался. Включён прямой интернет, автозапуск отключён.'); }
+			}
+			die('Новый режим не прошёл проверку. Прежний режим восстановлен.');
+		}
+		return tp ? 'Mihomo и TProxy работают.' : 'Ядро и панель работают. TProxy выключен.';
+	}
+	}
+}
+
+try {
+	progress('Начало операции…');
+	result.message = action(); result.state = 'done';
+} catch(e) {
+	result.state = 'error'; result.message = '' + (e.message || e);
+}
+{
+	if (m.stopped_flag()) { m.direct(); result.message += ' Mihomo выключен; включён прямой интернет.'; }
+	result.finished = time(); result.config_hash = m.hash_config(); m.atomic(RESULT, sprintf('%J', result));
+	let log = m.readjson(m.TMP + '/journal.json') || [];
+	push(log, { time: result.finished, action: req.action, state: result.state, message: result.message });
+	while (length(log) > 30) shift(log);
+	m.atomic(m.TMP + '/journal.json', sprintf('%J', log));
+	for (let file in ['request.json', 'candidate.yaml', 'auth', 'body.json', 'api.json', 'validation.private.log', 'private.log', 'rollback.yaml', 'core', 'core.gz', 'core.original', 'release.json', 'version.txt'])
+		fs.unlink(dir + '/' + file);
+	m.run(['/bin/rm', '-rf', dir + '/check']);
+	fs.unlink(m.TMP + '/lock/owner.json'); fs.rmdir(m.TMP + '/lock');
+	// Completed jobs contain only redacted results; keep at most ten.
+	let jobs = filter(fs.lsdir(m.TMP) || [], n => match(n, /^job-[a-zA-Z0-9]+$/));
+	jobs = sort(jobs, (a,b) => (fs.stat(m.TMP + '/' + b)?.mtime || 0) - (fs.stat(m.TMP + '/' + a)?.mtime || 0));
+	for (let i = 10; i < length(jobs); i++) m.run(['/bin/rm', '-rf', m.TMP + '/' + jobs[i]]);
+}

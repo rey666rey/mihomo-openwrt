@@ -1,0 +1,8 @@
+ffedc5cec697201d8fc29f1e3989f501c63dfe9ff1075727805a190d33524b75  htdocs/luci-static/resources/view/mihomo-mini/overview.js
+d9fcd752d338becafdc8390a674bfc67f38d386dd37c9ddc5b1bcc96e845f365  htdocs/luci-static/resources/view/mihomo-mini/style.css
+35f69927b9be9cfd226de5d185f133d7c724436fbe7c972b63647b416f3c17ab  root/usr/libexec/mihomo-mini-worker
+00d658e3c8423392db7ea878b6b17d092b4addac74b440244e7347e560530fe6  root/usr/share/luci/menu.d/luci-app-mihomo-mini.json
+042735dd72b7bd85f1a0b551aec7f9e050c44b9bf56f76ee0f3a219b6e6764b4  root/usr/share/rpcd/acl.d/luci-app-mihomo-mini.json
+b02bb85418f859fa712541bbd89b8f440fa8a03e5f4bb27b326605ceb3d9388b  root/usr/share/rpcd/ucode/mihomo-mini
+1d4219f154cf7011413d33a08ba74b2535cb91a62263f06d63c4152bec98ff52  root/usr/share/ucode/mihomo-mini-contract.uc
+75f1f1a59a26d4992c4614f0d03b22dbdbcf616c4fa6c9903bebcf5a02521a6c  root/usr/share/ucode/mihomo-mini.uc

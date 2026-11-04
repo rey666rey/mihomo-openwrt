@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="390" viewBox="0 0 1440 390" role="img" aria-labelledby="title desc">
+  <title id="title">Mihomo Mini for OpenWrt</title>
+  <desc id="desc">A LuCI control panel for Mihomo. Manage, configure, update, diagnose.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101d31"/><stop offset="1" stop-color="#152e43"/></linearGradient>
+    <linearGradient id="accent" x2="1" y2="1"><stop stop-color="#76e0d1"/><stop offset="1" stop-color="#68a9ed"/></linearGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse"><path d="M42 0H0V42" fill="none" stroke="#91b9d5" stroke-opacity=".06"/></pattern>
+  </defs>
+  <rect width="1440" height="390" rx="24" fill="url(#bg)"/>
+  <rect width="1440" height="390" rx="24" fill="url(#grid)"/>
+  <circle cx="1285" cy="90" r="215" fill="#68a9ed" opacity=".04"/>
+  <circle cx="1285" cy="90" r="155" fill="none" stroke="#76e0d1" stroke-opacity=".08"/>
+  <rect x="68" y="70" width="70" height="70" rx="19" fill="url(#accent)"/>
+  <path d="M87 115V94l16 12 16-12v21" stroke="#122438" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="162" y="96" fill="#8da9c0" font-family="system-ui,sans-serif" font-size="16" font-weight="600" letter-spacing="3">OPENWRT · LUCI</text>
+  <text x="160" y="139" fill="#f1f6fb" font-family="system-ui,sans-serif" font-size="40" font-weight="700">Mihomo Mini</text>
+  <text x="68" y="208" fill="#e7f0f8" font-family="system-ui,sans-serif" font-size="27">A clear view. A deliberate change.</text>
+  <text x="68" y="248" fill="#a1b7ca" font-family="system-ui,sans-serif" font-size="19">Local control for your existing Mihomo + TProxy setup.</text>
+  <g font-family="system-ui,sans-serif" font-size="16" fill="#c0d4e4">
+    <rect x="68" y="289" width="130" height="42" rx="21" fill="#294359"/>
+    <text x="133" y="316" text-anchor="middle">Manage</text>
+    <rect x="210" y="289" width="145" height="42" rx="21" fill="#294359"/>
+    <text x="282" y="316" text-anchor="middle">Configure</text>
+    <rect x="367" y="289" width="130" height="42" rx="21" fill="#294359"/>
+    <text x="432" y="316" text-anchor="middle">Update</text>
+    <rect x="509" y="289" width="145" height="42" rx="21" fill="#294359"/>
+    <text x="581" y="316" text-anchor="middle">Diagnose</text>
+  </g>
+  <g transform="translate(890 96)" stroke="#73cecf" stroke-width="2" fill="none">
+    <rect width="420" height="220" rx="16" fill="#112339" stroke="#3a536c"/>
+    <path d="M0 48H420" stroke="#3a536c"/>
+    <circle cx="25" cy="24" r="4" fill="#73cecf" stroke="none"/>
+    <path d="M44 24H136" stroke="#6f8da6"/>
+    <rect x="25" y="73" width="110" height="70" rx="8" stroke="#3a536c"/>
+    <rect x="155" y="73" width="110" height="70" rx="8" stroke="#3a536c"/>
+    <rect x="285" y="73" width="110" height="70" rx="8" stroke="#3a536c"/>
+    <path d="M44 94H92M174 94H222M304 94H352" stroke="#6f8da6"/>
+    <path d="M44 119H110M174 119H240M304 119H370" stroke="#73cecf" stroke-width="4"/>
+    <rect x="25" y="166" width="150" height="29" rx="6" fill="#244d62" stroke="none"/>
+    <path d="M45 181H151" stroke="#73cecf"/>
+  </g>
+</svg>

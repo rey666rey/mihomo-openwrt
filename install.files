@@ -1,0 +1,9 @@
+# mode source destination (relative to /)
+644 root/usr/share/ucode/mihomo-mini.uc usr/share/ucode/mihomo-mini.uc
+644 root/usr/share/ucode/mihomo-mini-contract.uc usr/share/ucode/mihomo-mini-contract.uc
+644 root/usr/share/rpcd/ucode/mihomo-mini usr/share/rpcd/ucode/mihomo-mini
+644 root/usr/share/rpcd/acl.d/luci-app-mihomo-mini.json usr/share/rpcd/acl.d/luci-app-mihomo-mini.json
+644 root/usr/share/luci/menu.d/luci-app-mihomo-mini.json usr/share/luci/menu.d/luci-app-mihomo-mini.json
+755 root/usr/libexec/mihomo-mini-worker usr/libexec/mihomo-mini-worker
+644 htdocs/luci-static/resources/view/mihomo-mini/overview.js www/luci-static/resources/view/mihomo-mini/overview.js
+644 htdocs/luci-static/resources/view/mihomo-mini/style.css www/luci-static/resources/view/mihomo-mini/style.css

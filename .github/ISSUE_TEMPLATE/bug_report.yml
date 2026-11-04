@@ -1,0 +1,30 @@
+name: Bug report / Ошибка
+description: Report a reproducible issue without private router data.
+body:
+  - type: markdown
+    attributes:
+      value: "Please do not attach full YAML, backups, subscription URLs, cookies or credentials. Security issues: see SECURITY.md. / Не публикуйте конфиги с ключами и резервные копии."
+  - type: input
+    id: version
+    attributes:
+      label: Application / OpenWrt / Mihomo versions
+      placeholder: "0.1.0 / 25.12.2 / v1.19.32"
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior / Ожидаемое и фактическое поведение
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / Как воспроизвести
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics / Диагностика без секретов
+      description: Include only relevant error messages and whether the core/TProxy/autostart were enabled.

@@ -1,0 +1,25 @@
+#mihomo-mini{max-width:1200px;margin:auto;line-height:1.55}
+#mihomo-mini [hidden]{display:none!important}
+#mihomo-mini .mm-muted{opacity:.72;font-size:.94em}
+#mihomo-mini .mm-panel{border:1px solid rgba(130,145,160,.35);border-radius:7px;padding:22px;margin:18px 0;background:rgba(127,145,160,.035)}
+#mihomo-mini h3{margin:0 0 8px;font-weight:600}
+#mihomo-mini .mm-tabs{display:flex;gap:24px;border-bottom:1px solid rgba(130,145,160,.35);margin:22px 0 18px;flex-wrap:wrap}
+#mihomo-mini .mm-tabs button{font:inherit;color:inherit;border:0;background:transparent;padding:10px 0;border-bottom:3px solid transparent;cursor:pointer;opacity:.72}
+#mihomo-mini .mm-tabs button[aria-selected=true]{border-bottom-color:#4d94c9;opacity:1;font-weight:600}
+#mihomo-mini .mm-actions{display:flex;flex-wrap:wrap;gap:9px;margin:16px 0}
+#mihomo-mini button{min-height:36px}
+#mihomo-mini button:disabled{cursor:default;opacity:.45}
+#mihomo-mini button:focus-visible,#mihomo-mini textarea:focus-visible{outline:2px solid #4d94c9;outline-offset:3px}
+#mihomo-mini .mm-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin:24px 0}
+#mihomo-mini .mm-facts strong{display:block;margin-top:6px}
+#mihomo-mini .mm-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:12px 0;border-bottom:1px solid rgba(130,145,160,.22);flex-wrap:wrap}
+#mihomo-mini .mm-row:last-child{border:0}
+#mihomo-mini .mm-row h3{margin:0}
+#mihomo-mini .mm-note{border-left:3px solid #4d94c9;padding-left:13px;opacity:.8;font-size:.94em;margin:18px 0}
+#mihomo-mini .mm-notice{padding:13px 16px;border:1px solid rgba(77,148,201,.6);background:rgba(77,148,201,.08);border-radius:5px;white-space:pre-wrap;overflow-wrap:anywhere}
+#mihomo-mini .mm-error{color:#cf5757}
+#mihomo-mini .mm-editor{box-sizing:border-box;width:100%;min-height:540px;resize:vertical;font:13px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;tab-size:2;padding:16px;margin:12px 0;white-space:pre;overflow:auto;border:1px solid rgba(130,145,160,.45);border-radius:5px}
+#mihomo-mini .mm-journal{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;font:12px/1.8 ui-monospace,SFMono-Regular,Consolas,monospace;padding:14px;background:rgba(127,145,160,.06);border:0}
+#mihomo-mini input[type=checkbox]{width:19px;height:19px;margin:0;cursor:pointer}
+@media(max-width:700px){#mihomo-mini .mm-panel{padding:16px}#mihomo-mini .mm-facts{grid-template-columns:1fr;gap:15px}#mihomo-mini .mm-tabs{gap:17px}#mihomo-mini .mm-editor{font-size:16px;min-height:440px}#mihomo-mini .mm-actions .btn{flex:1 1 auto}}
+@media(pointer:coarse){#mihomo-mini button{min-height:44px}}

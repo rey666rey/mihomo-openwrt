@@ -1,0 +1,8 @@
+{
+  "admin/services/mihomo-mini": {
+    "title": "Mihomo",
+    "order": 35,
+    "action": { "type": "view", "path": "mihomo-mini/overview" },
+    "depends": { "acl": ["luci-app-mihomo-mini"] }
+  }
+}

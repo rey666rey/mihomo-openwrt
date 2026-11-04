@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Validate payload and JSON
+        run: |
+          python3 tools/check-manifest.py
+          python3 tools/check-project.py
+      - name: Check shell scripts
+        run: |
+          sh -n install.sh
+          sh -n tools/run-router-tests.sh
+          shellcheck -s sh install.sh tools/run-router-tests.sh
+      - name: Test installer transactions and frontend
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          node tests/frontend.cjs

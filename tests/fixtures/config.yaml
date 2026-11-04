@@ -1,0 +1,25 @@
+# Synthetic validation fixture. No provider, subscription or real credential.
+mixed-port: 7890
+tproxy-port: 7893
+mode: rule
+log-level: warning
+ipv6: false
+external-controller: 192.168.1.1:9090
+external-ui: ui
+secret: fixture_only_not_a_real_key
+tun:
+  enable: false
+dns:
+  enable: true
+  listen: 127.0.0.1:1053
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  nameserver:
+    - 1.1.1.1
+proxy-groups:
+  - name: Test
+    type: select
+    proxies:
+      - DIRECT
+rules:
+  - MATCH,DIRECT

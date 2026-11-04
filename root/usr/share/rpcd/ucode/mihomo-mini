@@ -1,0 +1,30 @@
+'use strict';
+import * as fs from 'fs';
+import * as m from 'mihomo-mini';
+
+return { 'mihomo-mini': {
+	status: { call: function() { return m.status(); } },
+	config: {
+		args: { previous: false },
+		call: function(req) {
+			let path = req.args.previous ? m.STORE + '/config.previous.yaml' : m.CONFIG;
+			let content = fs.readfile(path);
+			if (content == null) return { ok: false, error: 'Файл конфигурации не найден.' };
+			return { ok: true, content, hash: m.hash_config(), previous: req.args.previous };
+		}
+	},
+	job: {
+		args: { id: '' },
+		call: function(req) {
+			if (!match(req.args.id || '', /^job-[a-zA-Z0-9]+$/)) return { ok: false, error: 'Некорректный номер задачи.' };
+			m.status();
+			let r = m.readjson(m.TMP + '/' + req.args.id + '/result.json');
+			return r ? { ok: true, result: r } : { ok: false, error: 'Задача не найдена.' };
+		}
+	},
+	action: {
+		args: { action: '', content: '', base: '' },
+		call: function(req) { return m.enqueue(req.args.action, req.args.content, req.args.base); }
+	},
+	direct: { call: function() { return m.direct(); } }
+} };
