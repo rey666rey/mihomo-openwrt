@@ -14,7 +14,7 @@ class Element {
 }
 const E = (tag, attrs, children) => new Element(tag, attrs, children);
 const calls = [], queue = {};
-let state = { ok:true,running:true,tproxy:true,autostart:false,version:'v1.19.32',config_hash:'hash-a',config_backup:false,core_backup:false,busy:null,latest:null,journal:[] };
+let state = { ok:true,running:true,tproxy:true,autostart:false,version:'v1.19.32',config_hash:'hash-a',config_backup:false,core_backup:false,busy:null,latest:null,journal:[],dns:{enabled:true,armed:true,state:'active',mode:'fake-ip',resolvers:['https://1.1.1.1/dns-query'],last_check:null} };
 let permission = true, config = 'example: yaml', job = null, poller, jobUnavailable=false;
 const rpc = { declare: ({method}) => async (...args) => {
   calls.push([method,...args]);
@@ -32,6 +32,9 @@ const app = new Function('view','rpc','ui','poll','E','L','window',source)({exte
   const root = app.render(state);
   assert(root);
   assert(app.buttons.start.disabled);
+  assert.equal(app.dnsStatus.textContent,'Правила защиты включены');
+  assert(!app.buttons.dnsEnable.disabled);
+  assert(!app.buttons.dnsCheck.disabled);
   assert(!app.buttons.stop.disabled);
   assert(!app.buttons.tproxy.disabled);
   assert(app.buttons.apply.disabled);
@@ -49,11 +52,11 @@ const app = new Function('view','rpc','ui','poll','E','L','window',source)({exte
   app.validated=app.editor.value; state.config_hash='changed-elsewhere'; await app.refresh();
   assert(app.buttons.apply.disabled,'stale base cannot apply');
   assert.equal(app.conflict.hidden,false);
-  app.pending=true; app.paint(); assert(app.buttons.restart.disabled); assert(!app.buttons.direct.disabled,'direct remains available during operation');
+  app.pending=true; app.paint(); assert(app.buttons.dnsEnable.disabled); assert(app.buttons.dnsDisable.disabled); assert(app.buttons.restart.disabled); assert(!app.buttons.direct.disabled,'direct remains available during operation');
   app.pending=false; state.config_hash=app.baseHash; permission=false; app.paint();
-  assert(app.buttons.direct.disabled); assert(app.buttons.validate.disabled); assert(app.editor.readOnly);
+  assert(app.buttons.direct.disabled); assert(app.buttons.validate.disabled); assert(app.buttons.dnsEnable.disabled); assert(app.buttons.dnsCheck.disabled); assert(app.editor.readOnly);
   permission=true; app.state={...state,running:false,tproxy:false}; app.paint();
-  assert(!app.buttons.start.disabled); assert(app.buttons.tproxy.disabled); assert(app.autostart.disabled);
+  assert(!app.buttons.start.disabled); assert(app.buttons.tproxy.disabled); assert(app.buttons.dnsEnable.disabled); assert(app.autostart.disabled);
   app.showDiagnostics({direct:true,dns:true,proxy:null,api:null}); assert.equal(app.diagResult.children.length,4);
   assert.equal(calls.filter(c=>c[0]==='action'&&c[1]==='update').length,0,'update never auto-installs');
   app.jobId='job-expired'; app.pending=true; jobUnavailable=true;

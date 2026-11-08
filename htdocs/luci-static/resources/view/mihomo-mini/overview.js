@@ -28,6 +28,10 @@ return view.extend({
 		var self = this, content = '', base = '';
 		if (self.pending || self.state.busy) return;
 		if (action === 'validate' || action === 'apply') { content = self.editor.value; base = self.baseHash || ''; }
+		if (action === 'dns_enable') {
+			content = JSON.stringify({ resolvers: [self.dnsPrimary.value, self.dnsSecondary.value].filter(function(v, i, all) { return v && all.indexOf(v) === i; }) });
+			base = self.state.config_hash;
+		}
 		if (action === 'apply' && self.validated !== content) return;
 		if (action === 'update') base = (self.state.latest || {}).version || '';
 		self.pending = true; self.paint(); self.message('Задача запускается…');
@@ -71,6 +75,8 @@ return view.extend({
 					}
 					if (j.diagnostics) self.showDiagnostics(j.diagnostics);
 					if (j.release) self.state.latest = j.release;
+					if (j.dns_groups && self.state.dns) self.state.dns.groups = j.dns_groups;
+					if (submission && (submission.action === 'dns_enable' || submission.action === 'dns_disable') && j.state === 'done') self.dnsDirty = false;
 					self.submitted = null;
 				}
 				self.paint();
@@ -100,6 +106,18 @@ return view.extend({
 	},
 	paint: function() {
 		var self = this, s = self.state, busy = !!(self.pending || s.busy), writable = L.hasViewPermission();
+		var d = s.dns || { state: 'disabled', groups: [], endpoints: [] };
+		var labels = { disabled: 'Выключена', paused: 'Ожидает включения TProxy', active: 'Правила защиты включены', blocked: 'DNS заблокирован — ожидается VPN', conflict: 'Обнаружено расхождение настроек' };
+		self.dnsStatus.textContent = labels[d.state] || 'Неизвестное состояние';
+		self.dnsStatus.className = 'mm-dns-status mm-dns-' + d.state;
+		self.facts.dns.textContent = labels[d.state] || 'Неизвестно';
+		if (!self.dnsDirty) { self.dnsPrimary.value = (d.resolvers || [])[0] || 'https://1.1.1.1/dns-query'; self.dnsSecondary.value = (d.resolvers || [])[1] || ''; }
+		self.dnsPrimary.disabled = busy || !writable; self.dnsSecondary.disabled = busy || !writable;
+		self.buttons.dnsEnable.disabled = busy || !writable || !s.running || !s.tproxy;
+		self.buttons.dnsDisable.disabled = busy || !writable || !d.enabled;
+		self.buttons.dnsCheck.disabled = busy || !writable || !d.armed;
+		var last = d.last_check;
+		self.dnsResult.textContent = last ? self.stamp(last.at) + ' · DNS ' + (last.available ? 'отвечает' : 'не отвечает') + ' · запрос через VPN ' + (last.proxy ? 'успешен' : 'не подтверждён') + '. ' + last.note : 'Проверка ещё не выполнялась.';
 		self.mode.textContent = s.tproxy ? 'Mihomo + TProxy' : s.running ? 'Только ядро и панель' : 'Прямой интернет';
 		self.facts.core.textContent = (s.running ? 'Работает · ' : 'Остановлено · ') + s.version;
 		self.facts.tproxy.textContent = s.tproxy ? 'Перехват LAN включён' : 'Перехвата нет';
@@ -154,7 +172,7 @@ return view.extend({
 		var control = E('section', { 'role': 'tabpanel' }, [
 			panel([
 				E('div', { 'class': 'mm-row' }, [self.mode, button('dashboard', 'Открыть MetaCubeXD ↗', function() { window.open('http://192.168.1.1:9090/ui/', '_blank', 'noopener,noreferrer'); })]),
-				E('div', { 'class': 'mm-facts' }, [fact('core', 'Ядро'), fact('tproxy', 'Основная сеть'), fact('boot', 'После перезагрузки')]),
+				E('div', { 'class': 'mm-facts' }, [fact('core', 'Ядро'), fact('tproxy', 'Основная сеть'), fact('boot', 'После перезагрузки'), fact('dns', 'DNS-защита')]),
 				E('div', { 'class': 'mm-actions' }, [
 					button('start', 'Запустить ядро', function() { self.act('start'); }, 'cbi-button-action'),
 					button('stop', 'Остановить', function() { self.act('stop'); }),
@@ -167,7 +185,7 @@ return view.extend({
 				E('p', { 'class': 'mm-note' }, 'Ядро можно использовать отдельно от перехвата. LTE работает по своей схеме.'),
 				E('label', { 'class': 'mm-row' }, [E('span', {}, 'Запускать Mihomo после перезагрузки'), self.autostart])
 			]),
-			panel([ E('h3', {}, 'Прямой интернет'), E('p', {}, 'Остановить Mihomo, снять его правила TProxy и отключить автозапуск.'),
+			panel([ E('h3', {}, 'Прямой интернет'), E('p', {}, 'Остановить Mihomo, снять правила TProxy и DNS-защиты, вернуть обычный DNS и отключить автозапуск.'),
 				button('direct', 'Переключить на прямой интернет', function() {
 					self.message('Отключение Mihomo и перехвата…');
 					directRPC().then(function(r) { if (!r.ok) throw new Error(r.error); self.message(r.message); return self.refresh(); })
@@ -201,12 +219,32 @@ return view.extend({
 				button('diagnostics', 'Проверить подключение', function() { self.act('diagnostics'); }), self.diagResult])),
 			panel([E('h3', {}, 'Журнал приложения'), E('p', { 'class': 'mm-muted' }, 'Последние 30 операций. Без содержимого конфига и адресов подписок. Журнал очищается при перезагрузке.'), self.journal])
 		]);
-		var tabs = [control, config, update, diag], tabButtons = [];
+		self.dnsStatus = E('strong'); self.dnsResult = E('p', { 'class': 'mm-note', 'aria-live': 'polite' });
+		self.dnsDirty = false;
+		var dirty = function() { self.dnsDirty = true; self.paint(); };
+		var endpoints = [['https://1.1.1.1/dns-query', 'Cloudflare · 1.1.1.1'], ['https://8.8.8.8/dns-query', 'Google · 8.8.8.8'], ['https://9.9.9.9/dns-query', 'Quad9 · 9.9.9.9']];
+		self.dnsPrimary = E('select', { 'aria-label': 'Основной DNS', 'change': dirty }, endpoints.map(function(e) { return E('option', { value: e[0] }, e[1]); }));
+		self.dnsSecondary = E('select', { 'aria-label': 'Дополнительный DNS', 'change': dirty }, [E('option', { value: '' }, 'Не использовать')].concat(endpoints.map(function(e) { return E('option', { value: e[0] }, e[1]); })));
+		var dns = E('section', { 'role': 'tabpanel', 'hidden': '' }, [
+			panel([
+				E('h3', {}, 'Защищённый DNS домашней сети'), self.dnsStatus,
+				E('p', { 'class': 'mm-muted' }, 'Для внешних сайтов устройства получают fake-IP. Выход выбирается в группе сервиса. Имена для прямых соединений и запросы самого роутера разрешаются через DoH.'),
+				E('label', { 'class': 'mm-row' }, [E('span', {}, 'Основной DNS · HTTPS'), self.dnsPrimary]),
+				E('label', { 'class': 'mm-row' }, [E('span', {}, 'Дополнительный DNS · HTTPS'), self.dnsSecondary]),
+				E('div', { 'class': 'mm-actions' }, [button('dnsEnable', 'Включить / применить', function() { self.act('dns_enable'); }, 'cbi-button-action'), button('dnsDisable', 'Выключить защиту', function() { self.act('dns_disable'); })]),
+				E('p', { 'class': 'mm-note' }, 'Локальные имена и torrserver.home.arpa обслуживаются роутером. LTE и мониторинг 192.168.1.111 исключены. Внешний IPv6 основной сети блокируется на время защиты.'),
+				E('p', { 'class': 'mm-note' }, 'Для запуска VPN адреса его серверов определяются отдельным DNS через HTTPS вне туннеля. Страна DNS не обязана совпадать со страной каждой политики приложения.')
+			]),
+			panel([E('h3', {}, 'Проверка'), button('dnsCheck', 'Проверить DNS-защиту', function() { self.act('dns_check'); }), self.dnsResult,
+				E('p', { 'class': 'mm-muted' }, 'Проверка относится к роутеру. На iPhone и Mac проверьте DNS-профили, Private Relay и Secure DNS браузера. Собственный DoH приложений не контролируется одним перехватом порта 53. Это защита DNS, а не запрет любого прямого трафика.'),
+				E('p', { 'class': 'mm-note' }, 'Остановка Mihomo или отключение TProxy возвращает обычный DNS; настройка защиты сохраняется для следующего включения TProxy. Кнопка «Прямой интернет» доступна на вкладке «Управление».')])
+		]);
+		var tabs = [control, dns, config, update, diag], tabButtons = [];
 		var nav = E('nav', { 'class': 'mm-tabs', 'role': 'tablist', 'aria-label': 'Разделы Mihomo' });
-		['Управление', 'Конфигурация', 'Обновление', 'Диагностика'].forEach(function(name, i) {
+		['Управление', 'DNS-защита', 'Конфигурация', 'Обновление', 'Диагностика'].forEach(function(name, i) {
 			var b = E('button', { 'type': 'button', 'role': 'tab', 'id': 'mm-tab-' + i, 'aria-controls': 'mm-section-' + i, 'aria-selected': String(i === 0),
 				'click': function() { tabs.forEach(function(t, n) { t.hidden = n !== i; tabButtons[n].setAttribute('aria-selected', String(n === i)); }); },
-				'keydown': function(ev) { if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') { ev.preventDefault(); var n = (i + (ev.key === 'ArrowRight' ? 1 : 3)) % 4; tabButtons[n].click(); tabButtons[n].focus(); } }
+				'keydown': function(ev) { if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') { ev.preventDefault(); var n = (i + (ev.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length; tabButtons[n].click(); tabButtons[n].focus(); } }
 			}, name);
 			tabs[i].id = 'mm-section-' + i; tabs[i].setAttribute('aria-labelledby', 'mm-tab-' + i);
 			tabButtons.push(b); nav.appendChild(b);

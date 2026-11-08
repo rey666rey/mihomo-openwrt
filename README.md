@@ -17,13 +17,14 @@
 
 The project began with a working router setup and a simple goal: make everyday operations clear, while preserving the ability to switch back to direct internet.
 
-> **Compatibility matters.** Version 0.1.2 targets the specific `mihomo-safe-run` / `mihomo_tproxy_safe` integration described below. It installs the LuCI application only. A fresh OpenWrt router, OpenClash, Nikki, or an arbitrary Mihomo service is not automatically compatible. Run `--check` first.
+> **Compatibility matters.** Version 0.2.0 targets the specific `mihomo-safe-run` / `mihomo_tproxy_safe` integration described below. It installs LuCI and an opt-in DNS guard; installation does not activate protection. A fresh OpenWrt router, OpenClash, Nikki, or an arbitrary Mihomo service is not automatically compatible. Run `--check` first.
 
-## One page, four tabs
+## One page, five tabs
 
 | Tab | What you can do |
 | --- | --- |
 | **Control** | Inspect the core, LAN interception and autostart separately. Start the core, stop or restart it, toggle TProxy, open MetaCubeXD. |
+| **DNS protection** | Return fake IPs to LAN clients, resolve local names with dnsmasq and check client and router DNS separately. |
 | **Configuration** | Load the complete YAML, edit it in a large field, validate it with Mihomo, apply it with a previous copy available. |
 | **Update** | Check the official stable release, install the Linux ARM64 core after verification, or return to the previous core. |
 | **Diagnostics** | Check direct connectivity, router DNS, the local proxy and controller API. Read the application's recent operation log. |
@@ -46,21 +47,25 @@ flowchart LR
 
 Autostart is a separate setting. Installing the application does not enable it. The **Direct internet** action stops Mihomo, removes this integration's interception rules and disables autostart. Direct access to a site still depends on your ISP and that site's availability.
 
+See [DNS protection, failure behavior and limits](docs/dns-protection.md). Protection is opt-in. Browser DoH/Private Relay and encrypted VPN-server bootstrap are explicitly outside the blanket leak-free claim.
+
 ## Requirements
 
-The reference setup was tested on **OpenWrt 25.12.2**, ASUS TUF-AX4200, Linux ARM64, with Mihomo v1.19.32. Other firmware versions have not received the same end-to-end validation.
+The reference setup was tested on **OpenWrt 25.12.2**, ASUS TUF-AX4200, Linux ARM64, with Mihomo v1.19.33. Other firmware versions have not received the same end-to-end validation.
 
 - LuCI with rpcd's ucode support; `ucode` modules `fs`, `digest`, `ubus` and `uci`.
 - Existing `/usr/bin/mihomo`, `/etc/init.d/mihomo`, `/usr/libexec/mihomo-safe-run` and `/etc/config/mihomo`.
 - Existing config `/etc/mihomo/config.yaml`, workdir `/etc/mihomo`, service user `root`.
 - TProxy file `/etc/mihomo/tproxy.nft`, table `inet mihomo_tproxy_safe`, mark `0x1/0x1`, policy table `100`, priority `100`.
 - Mixed proxy `127.0.0.1:7890`, TProxy port `7893`, controller `192.168.1.1:9090`, dashboard directory `ui`.
-- Independent router DNS; local Mihomo DNS `127.0.0.1:1053`, fake-IP `198.18.0.1/16`, TUN disabled, IPv6 disabled in the main config.
+- Independent router DNS; local Mihomo DNS `127.0.0.1:1053`, fake-IP or redir-host (DNS protection uses fake-IP), TUN disabled, IPv6 disabled in the main config.
 - `curl`, CA certificates, `nft`, full `ip`, `setsid`, `gzip`, `nslookup`, `jsonfilter`, `flock` and the usual OpenWrt shell tools.
 
 Read the [compatibility contract](docs/compatibility.md) before adapting the project. The installer checks the available commands, config contract, service paths and relevant integration markers; it does not prove that every client or upstream proxy works.
 
 ## Install
+
+The archive below is the previous stable UI (0.1.2); DNS protection requires the reviewed 0.2.0 source checkout or its release archive when published.
 
 Download a complete tagged source archive **on the router**, inspect it, and run the checks. The installer does not fetch or execute additional scripts.
 
@@ -92,7 +97,7 @@ Refresh LuCI after installation. An older session may need another page load or 
 
 ### What the installer does
 
-1. Verifies the eight payload files, allowed destinations, permissions, dependencies, architecture and current integration; compiles the ucode components before installing.
+1. Verifies the eleven payload files, allowed destinations, permissions, dependencies, architecture and current integration; compiles the ucode components before installing.
 2. Shows its scope and asks for confirmation. Non-interactive changes require `--yes`.
 3. Locks competing application operations and saves the previous application files in a private local backup.
 4. Writes and verifies each new file next to its destination, then renames it into place.
@@ -108,8 +113,8 @@ The SHA-256 manifest checks payload integrity; it is not a detached signature. O
 | --- | --- | --- |
 | Preflight | `sh install.sh --check` | Temporary checks; no app installation or service reload. |
 | Install / update UI | `sh install.sh` | Eight application files; preserves the core and config. |
-| Remove UI | `sh install.sh --uninstall` | Managed, unmodified application files only; leaves Mihomo running. |
-| Restore UI backup | `sh install.sh --restore /etc/mihomo-mini/install-backup-…` | Restores application files from a verified local snapshot. |
+| Remove UI | `sh install.sh --uninstall` | Managed files; disarms owned DNS protection first, leaves Mihomo running. |
+| Restore UI backup | `sh install.sh --restore /etc/mihomo-mini/install-backup-…` | Disarms DNS protection, then restores application files from a verified local snapshot. |
 | Scripted operation | Add `--yes` | Skips the confirmation after you have reviewed the operation. |
 
 Use the **Update** tab to update the Mihomo core; updating this repository's UI and updating the core are separate operations. The application selects the official stable MetaCubeX Linux ARM64 archive, verifies its GitHub asset SHA-256, tests the new binary with your config, and preserves the prior runtime mode. Alpha builds are excluded. Missing checksums or insufficient storage block installation.

@@ -54,3 +54,11 @@ Reference-device validation additionally covered the LuCI page in Chrome, config
 ## По-русски
 
 Обычные тесты запускаются на компьютере и используют отдельную временную файловую систему. Для настоящего `mihomo -t` есть `sh tools/run-router-tests.sh openwrt`: он создаёт временные синтетические данные на указанном роутере, а операции службы и сети в тестах отката заменяет заглушками. Рабочий конфиг и подписки в тестовые данные не копируются. Проверки CI не означают, что приложение проверено на всех роутерах, прошивках и сетевых сбоях.
+
+## DNS safety tests
+
+`sh tools/run-dns-tests.sh openwrt` runs isolated DNS state/graph/guard tests with rewritten paths and restrictive kernel/API mocks. It covers nested DIRECT, missing nodes and cycles, protected editor fields, crash state, drift, rule errors, cold-boot intent and late emergency cancellation. The general worker suite additionally exercises failed activation, failed protected reconfiguration and explicit stop through the real worker. Neither suite modifies live DNS or firewall rules. A live WAN capture/client test is separate; mock tests do not establish absence of all client DoH.
+
+### Live LAN client regression check
+
+From a computer behind the router, run `python3 tools/check-dns-client.py --local-name torrserver.home.arpa`. With protection active, it requires A answers in the client fake-IP range `198.18.0.0/16`, exercises both UDP and established TCP to the router and a manually specified external DNS, and verifies the local record through both addresses. It intentionally does not change router state or claim proof against encrypted client DoH. Pair it with a short private capture on the WAN for port 53/853; keep captures out of the repository.

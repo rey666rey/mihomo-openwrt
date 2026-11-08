@@ -25,3 +25,7 @@ There is no published response-time guarantee. Provide the affected version, exp
 ## По-русски
 
 Редактор показывает полный конфиг с ключами и паролями. Права записи выдавайте только доверенным администраторам. Не открывайте LuCI/API в интернет ради удобства и не публикуйте YAML, резервные копии, cookies или ссылки подписок в issues. Уязвимости лучше передавать через приватный GitHub advisory; если такой возможности нет, сначала запросите приватный канал без раскрытия деталей.
+
+## DNS protection boundaries (0.2)
+
+The opt-in guard controls classic DNS and rejects direct DoT/DoQ/public IPv6 in the reference LAN. It is not a full-traffic kill switch or a detector of arbitrary HTTPS DNS. Encrypted VPN-server bootstrap is direct and disclosed. LTE/monitoring and upstream-router clients are excluded. Root/controller administrators and subscription sources remain trusted. Rule-state diagnostics and a router probe do not prove all-device leak freedom. See [DNS protection](docs/dns-protection.md).

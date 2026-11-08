@@ -39,7 +39,8 @@ Mihomo Mini installer
 
 Options: --yes / -y may also accompany --uninstall or --restore.
 NO_COLOR disables ANSI colors. Non-interactive changes require --yes.
-The installer never downloads a core, starts Mihomo, or changes networking.
+Installation never starts Mihomo or enables DNS protection.
+Removal/restoration explicitly disables owned DNS protection before replacing files.
 EOF
 }
 while [ "$#" -gt 0 ]; do
@@ -60,7 +61,8 @@ done
 # No destination outside this list may be modified by the installer.
 allowed() {
     case "$1" in
-        usr/share/ucode/mihomo-mini.uc|usr/share/ucode/mihomo-mini-contract.uc|\
+        usr/share/ucode/mihomo-mini.uc|usr/share/ucode/mihomo-mini-contract.uc|usr/share/ucode/mihomo-mini-dns.uc|\
+        usr/libexec/mihomo-mini-dns|etc/init.d/mihomo-mini-dns|\
         usr/share/rpcd/ucode/mihomo-mini|usr/share/rpcd/acl.d/luci-app-mihomo-mini.json|\
         usr/share/luci/menu.d/luci-app-mihomo-mini.json|usr/libexec/mihomo-mini-worker|\
         www/luci-static/resources/view/mihomo-mini/overview.js|\
@@ -185,14 +187,17 @@ no_symlinks "$APP_TMP"
 STAGE=$(mktemp -d "$TARGET_ROOT/tmp/mihomo-mini-install.XXXXXX") || fail 'Cannot create a private staging directory.'
 chmod 700 "$STAGE"
 awk 'NF && $1 !~ /^#/ {print}' "$BASE/install.files" > "$STAGE/files"
-[ "$(wc -l < "$STAGE/files" | tr -d ' ')" = 8 ] || fail 'Expected exactly eight application files.'
+[ "$(wc -l < "$STAGE/files" | tr -d ' ')" = 11 ] || fail 'Expected exactly eleven application files.'
 while read -r mode src dst extra; do
     [ -z "${extra:-}" ] || fail 'Malformed payload manifest.'
-    case "$mode" in 644|755) : ;; *) fail 'Invalid payload permissions.' ;; esac
     allowed "$dst" || fail "Unexpected destination: $dst"
-    if [ "$dst" = usr/libexec/mihomo-mini-worker ]; then
-        [ "$mode" = 755 ] || fail 'The worker must be executable.'
-    else [ "$mode" = 644 ] || fail 'Application data files must use mode 644.'; fi
+    case "$dst" in
+        usr/libexec/mihomo-mini-worker|etc/init.d/mihomo-mini-dns) expected_mode=700 ;;
+        usr/share/ucode/mihomo-mini-dns.uc) expected_mode=600 ;;
+        usr/libexec/mihomo-mini-dns) expected_mode=755 ;;
+        *) expected_mode=644 ;;
+    esac
+    [ "$mode" = "$expected_mode" ] || fail "Invalid payload permissions for $dst"
     case "$src" in root/"$dst"|htdocs/"${dst#www/}") : ;; *) fail 'Source and destination do not match.' ;; esac
     if [ ! -f "$BASE/$src" ] || [ -L "$BASE/$src" ]; then fail "Payload file missing or symlinked: $src"; fi
     no_symlinks "$BASE/$src"
@@ -200,7 +205,7 @@ while read -r mode src dst extra; do
     [ ! -e "$TARGET_ROOT/$dst" ] || [ -f "$TARGET_ROOT/$dst" ] || fail "Destination is not a regular file: $dst"
 done < "$STAGE/files"
 awk '{print $3}' "$STAGE/files" | sort -u > "$STAGE/destinations"
-[ "$(wc -l < "$STAGE/destinations" | tr -d ' ')" = 8 ] || fail 'Duplicate payload destinations.'
+[ "$(wc -l < "$STAGE/destinations" | tr -d ' ')" = 11 ] || fail 'Duplicate payload destinations.'
 # Reconstruct the expected paths before allowing sha256sum to read the manifest.
 awk '{print $2}' "$STAGE/files" | sort > "$STAGE/expected"
 awk 'NF == 2 {print $2}' "$BASE/SHA256SUMS" | sort > "$STAGE/checksummed"
@@ -235,7 +240,7 @@ if [ "$MODE" = install ] || [ "$MODE" = check ]; then
         let e = contract(readfile(config_path));
         if (e != null) exit(1);
     ' > "$STAGE/compatibility.log" 2>&1 || fail 'The existing config or ucode modules do not match the supported integration. See docs/compatibility.md.'
-    for unit in root/usr/libexec/mihomo-mini-worker root/usr/share/rpcd/ucode/mihomo-mini; do
+    for unit in root/usr/libexec/mihomo-mini-worker root/usr/libexec/mihomo-mini-dns root/usr/share/rpcd/ucode/mihomo-mini; do
         ucode -L "$BASE/root/usr/share/ucode" -c -o "$STAGE/unit.ucb" "$BASE/$unit" \
             > "$STAGE/compile.log" 2>&1 || fail 'ucode compilation failed. Nothing was installed.'
     done
@@ -290,9 +295,12 @@ if [ "$MODE" = check ]; then
 fi
 
 step 2 'Review'
-say '  Scope: eight LuCI / RPC application files.'
+say '  Scope: eleven LuCI / RPC / DNS guard application files.'
 say '  Kept: core binary, YAML config, service, TProxy, DNS, Wi-Fi, LTE and autostart.'
 say '  Reloaded: rpcd only. LuCI may need a refresh or a new login.'
+if [ "$MODE" = uninstall ] || [ "$MODE" = restore ]; then
+    say '  Owned DNS protection, if configured, is disabled before files are removed/restored.'
+fi
 if [ "$YES" = 0 ]; then
     [ -t 0 ] || fail 'Non-interactive mode requires --yes after reviewing --check.'
     printf '  Continue with %s? [y/N] ' "$MODE"
@@ -313,6 +321,14 @@ SHARED_LOCK=1
 mkdir -p "$APP_TMP/job-installer"
 printf '{"id":"job-installer","pid":%s,"created":%s}\n' "$$" "$(date +%s)" > "$APP_TMP/lock/owner.json"
 printf '%s\n' '{"state":"running","message":"Mihomo Mini installer is updating application files."}' > "$APP_TMP/job-installer/result.json"
+# Removal and rollback to an older UI must not orphan a DNS guard without controls.
+if { [ "$MODE" = uninstall ] || [ "$MODE" = restore ]; } && [ -f "$STORE/dns.json" ]; then
+    ucode -L "$TARGET_ROOT/usr/share/ucode" "$TARGET_ROOT/usr/libexec/mihomo-mini-dns" remove \
+        > "$STAGE/dns-remove.log" 2>&1 || fail 'Could not release owned DNS protection. No application files were removed.'
+    "$TARGET_ROOT/etc/init.d/mihomo-mini-dns" stop || fail 'Could not stop the DNS watcher.'
+    "$TARGET_ROOT/etc/init.d/mihomo-mini-dns" disable || fail 'Could not disable the DNS watcher.'
+    say '  Owned DNS protection disabled; ordinary LAN DNS restored.'
+fi
 protected_state > "$STAGE/protected.before" || fail 'Could not capture the current router state.'
 
 step 3 'Backup'

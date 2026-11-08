@@ -23,3 +23,9 @@
 #mihomo-mini input[type=checkbox]{width:19px;height:19px;margin:0;cursor:pointer}
 @media(max-width:700px){#mihomo-mini .mm-panel{padding:16px}#mihomo-mini .mm-facts{grid-template-columns:1fr;gap:15px}#mihomo-mini .mm-tabs{gap:17px}#mihomo-mini .mm-editor{font-size:16px;min-height:440px}#mihomo-mini .mm-actions .btn{flex:1 1 auto}}
 @media(pointer:coarse){#mihomo-mini button{min-height:44px}}
+
+#mihomo-mini .mm-dns-status { display:block; padding:12px 14px; border-radius:8px; background:var(--background-color-low,#eef2f6); margin:12px 0; }
+#mihomo-mini .mm-dns-active { border-left:4px solid #33966b; }
+#mihomo-mini .mm-dns-blocked, #mihomo-mini .mm-dns-conflict { border-left:4px solid #d18436; }
+#mihomo-mini .mm-row select { max-width:65%; min-width:180px; }
+@media(max-width:600px) { #mihomo-mini .mm-row select { max-width:100%; width:100%; } }

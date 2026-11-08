@@ -1,8 +1,11 @@
-ffedc5cec697201d8fc29f1e3989f501c63dfe9ff1075727805a190d33524b75  htdocs/luci-static/resources/view/mihomo-mini/overview.js
-d9fcd752d338becafdc8390a674bfc67f38d386dd37c9ddc5b1bcc96e845f365  htdocs/luci-static/resources/view/mihomo-mini/style.css
-16123c2fe0f61515cc7978f8681aa922e91d1968082168334bcce50a83ed72c0  root/usr/libexec/mihomo-mini-worker
+2508184f808a7d25f3925a2250145b509b2fe00e9f1e568b00f35b707bb4998a  htdocs/luci-static/resources/view/mihomo-mini/overview.js
+9fb5e6b9e8b7c61916c1f3e505746dd4057b5b732e5127668437aeabccbba7bc  htdocs/luci-static/resources/view/mihomo-mini/style.css
+2eb8436c2639cb206eca468b331aa10688885cebb32d0438e765f08ebdf425c9  root/etc/init.d/mihomo-mini-dns
+5f2298868a50ec5d5f3ed8e1169b7f67c3a8da42538c17bed608f3256e99aa41  root/usr/libexec/mihomo-mini-dns
+465d14f6352ef00cc448bbbe19a385b3c65219dd316cced6c177c10022c17fda  root/usr/libexec/mihomo-mini-worker
 00d658e3c8423392db7ea878b6b17d092b4addac74b440244e7347e560530fe6  root/usr/share/luci/menu.d/luci-app-mihomo-mini.json
 042735dd72b7bd85f1a0b551aec7f9e050c44b9bf56f76ee0f3a219b6e6764b4  root/usr/share/rpcd/acl.d/luci-app-mihomo-mini.json
 b02bb85418f859fa712541bbd89b8f440fa8a03e5f4bb27b326605ceb3d9388b  root/usr/share/rpcd/ucode/mihomo-mini
-1d4219f154cf7011413d33a08ba74b2535cb91a62263f06d63c4152bec98ff52  root/usr/share/ucode/mihomo-mini-contract.uc
-642f75ee661a945e243e4f22359629353ab3cfa78379c914ada80a44fb9bb461  root/usr/share/ucode/mihomo-mini.uc
+2674710a528d40a40f6e4f50ce8c8f5921c1e395a648e38589066dcae65d243b  root/usr/share/ucode/mihomo-mini-contract.uc
+2a570fc252b078e27e87f831ef566c78fbfebda6533fab10513501357e33660a  root/usr/share/ucode/mihomo-mini-dns.uc
+03881800d1a8c69bab6ad9101b7efd012787d5db9c0b00add9d3d005b8343442  root/usr/share/ucode/mihomo-mini.uc

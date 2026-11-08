@@ -31,7 +31,9 @@ jobs:
         run: |
           sh -n install.sh
           sh -n tools/run-router-tests.sh
-          shellcheck -s sh install.sh tools/run-router-tests.sh
+          sh -n tools/run-dns-tests.sh
+          sh -n root/etc/init.d/mihomo-mini-dns
+          shellcheck -s sh install.sh tools/run-router-tests.sh tools/run-dns-tests.sh root/etc/init.d/mihomo-mini-dns
       - name: Test installer transactions and frontend
         run: |
           python3 -m unittest discover -s tests -p 'test_*.py' -v

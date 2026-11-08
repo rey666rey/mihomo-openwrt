@@ -5,6 +5,7 @@ const root = '/tmp/mihomo-mini-faults';
 let args = ARGV, cmd = args[0];
 if (cmd == '/usr/bin/curl') {
 	let url = args[length(args)-1];
+	if (index(args, '-x') >= 0 && fs.access(root + '/fail-dns-proxy')) exit(1);
 	if (index(args, '-x') >= 0) exit(index(fs.readfile(root + '/config.yaml') || '', 'log-level: info') >= 0 ? 1 : 0);
 	if (url == 'https://api.github.com/repos/MetaCubeX/mihomo/releases/latest'
 		|| url == 'https://github.com/MetaCubeX/mihomo/releases/download/v9.0.1/mihomo-linux-arm64-v9.0.1.gz') {
@@ -36,6 +37,7 @@ if (cmd == '/bin/sync') {
 }
 if (cmd == '/bin/sleep') exit(0);
 if (cmd == '/sbin/ip') exit(1);
+if (cmd == '/etc/init.d/mihomo-mini-dns') exit(0);
 if (cmd == '/etc/init.d/mihomo') {
 	let f = fs.open(root + '/service-actions', 'a'); f.write(join(' ', args) + '\n'); f.close(); exit(0);
 }

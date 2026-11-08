@@ -16,7 +16,7 @@ Do not run the shell installer over package-managed application files. It refuse
 
 ## Installation transaction
 
-The installer accepts exactly the eight destinations in `install.files`. It rejects duplicate destinations, unsupported modes, symlinked payload/destination paths, unexpected paths, incomplete checksums, insufficient storage and incompatible service settings.
+The installer accepts exactly the eleven destinations in `install.files`. It rejects duplicate destinations, unsupported modes, symlinked payload/destination paths, unexpected paths, incomplete checksums, insufficient storage and incompatible service settings.
 
 After confirmation, it takes an installer lock and the application's operation lock. The backup is stored at:
 
@@ -54,9 +54,9 @@ If recovery itself fails, stop retrying until storage/permissions are corrected.
 sh install.sh --uninstall
 ```
 
-Uninstall requires a managed-file manifest and unchanged installed hashes. Locally edited or missing files cause a refusal, so custom code is not silently deleted. The operation removes the eight application files and its managed manifest, reloads rpcd and preserves the Mihomo service, core, config and existing backups. It does not turn the proxy off.
+Uninstall requires a managed-file manifest and unchanged installed hashes. Locally edited or missing files cause a refusal, so custom code is not silently deleted. The operation removes the eleven application files and its managed manifest, reloads rpcd and preserves the Mihomo service, core, config and existing backups. It does not turn the proxy off.
 
-Old installations made before this repository's managed installer may not have an ownership manifest. Install the reviewed matching source first to register the eight files, then uninstall if desired.
+Old installations made before this repository's managed installer may not have an ownership manifest. Install the reviewed matching source first to register the eleven files, then uninstall if desired.
 
 ## Common problems
 
@@ -78,3 +78,5 @@ Old installations made before this repository's managed installer may not have a
 - Для ручного восстановления используйте точный путь копии, который напечатал установщик: `sh install.sh --restore ПУТЬ`.
 - Удаление интерфейса не останавливает Mihomo. Если нужен прямой интернет, сначала выберите соответствующее действие в самом приложении.
 - При нехватке места или ошибке восстановления сохраните резервную копию и устраните причину, прежде чем повторять операцию.
+
+DNS protection is not activated by installation. Uninstall/restore explicitly releases owned DNS protection and stops/disables its watcher before application replacement. If release fails, removal is refused. See [DNS recovery](dns-protection.md#recovery).

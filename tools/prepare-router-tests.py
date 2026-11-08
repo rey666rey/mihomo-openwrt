@@ -68,6 +68,35 @@ for name in ('basic', 'faults'):
                         'browser_download_url': 'https://github.com/MetaCubeX/mihomo/releases/download/v9.0.1/mihomo-linux-arm64-v9.0.1.gz'}]}))
     (dest / 'modules/mihomo-mini.uc').write_text(source)
     shutil.copy(PROJECT / 'root/usr/share/ucode/mihomo-mini-contract.uc', dest / 'modules')
+    dns = (PROJECT / 'root/usr/share/ucode/mihomo-mini-dns.uc').read_text()
+    dns = dns.replace("'/etc/mihomo-mini'", repr(remote + '/store')).replace("'/tmp/mihomo-mini'", repr(remote + '/jobs')).replace("'/etc/mihomo/config.yaml'", repr(remote + '/config.yaml'))
+    # These fixtures never arm DNS. A separate suite exercises guard transitions.
+    if name == 'faults':
+        begin, end = dns.index('export function command('), dns.index('export function read(')
+        dns = dns[:begin] + """export function command(args) {
+    if (args[0] == '/bin/sh' && args[1] == '-c' && index(args[2], 'nslookup -type=a example.org 127.0.0.1:1056 |') == 0)
+        return !fs.access(TMP + '/client-down');
+    if (args[0] != '/usr/sbin/nft') die('DNS fixture refused command');
+    if (args[1] == '-c') return true;
+    if (args[1] == '-f') {
+        if (fs.access(TMP + '/fail-dns-rules')) return false;
+        if (index(fs.readfile(args[2]), 'table inet mihomo_mini_dns {') >= 0) fs.writefile(TMP + '/dns-table', fs.readfile(args[2])); else fs.unlink(TMP + '/dns-table'); return true;
+    }
+    if (args[1] == 'delete') { fs.unlink(TMP + '/dns-table'); return true; }
+    die('DNS fixture refused nft command');
+};
+export function capture(cmd) {
+    if (index(cmd, '/usr/sbin/nft -j -a') == 0) return {code:0, text:sprintf('%J',{nftables:[{rule:{comment:'mihomo-mini-dns-owned',handle:1}}]})};
+    if (index(cmd, '/usr/sbin/nft') == 0) return { code:fs.access(TMP+'/dns-table') ? 0 : 1, text:fs.readfile(TMP+'/dns-table') || '' };
+    if (index(cmd, 'awk ') == 0) return { code:0, text:'' };
+    die('DNS fixture refused capture');
+};
+""" + dns[end:]
+        begin, end = dns.index('export function graph('), dns.index('function verify_default(')
+        dns = dns[:begin] + "export function graph() { return { '🌐 Web Stable':{ type:'Fallback', all:['A'] }, A:{ type:'VLESS' } }; };\n" + dns[end:]
+        source = source.replace('export function capture(cmd) {', "export function capture(cmd) {\n\tif (index(cmd, 'nslookup ') == 0) return {code:0, text:''};")
+        (dest / 'modules/mihomo-mini.uc').write_text(source)
+    (dest / 'modules/mihomo-mini-dns.uc').write_text(dns)
     shutil.copy(PROJECT / 'tests/fixtures/config.yaml', dest / 'config.yaml')
     (dest / 'worker.uc').write_text(ws)
     wrapper = dest / 'worker'

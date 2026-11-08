@@ -13,7 +13,7 @@ for line in (BASE / 'install.files').read_text().splitlines():
     if not line.strip() or line.startswith('#'):
         continue
     mode, source, destination = line.split()
-    assert mode in ('644', '755'), mode
+    assert mode in ('600', '644', '700', '755'), mode
     assert source.startswith(('root/', 'htdocs/')), source
     assert '..' not in Path(source).parts and not Path(source).is_absolute()
     assert not (BASE / source).is_symlink(), source
@@ -21,7 +21,7 @@ for line in (BASE / 'install.files').read_text().splitlines():
 expected = ''.join(sorted(entries, key=lambda line: line.split()[1]))
 if args.write:
     (BASE / 'SHA256SUMS').write_text(expected)
-    print('Updated SHA256SUMS for eight application files.')
+    print(f'Updated SHA256SUMS for {len(entries)} application files.')
 else:
     assert (BASE / 'SHA256SUMS').read_text() == expected, 'Run python3 tools/check-manifest.py --write'
     print('Payload manifest and SHA256SUMS match.')

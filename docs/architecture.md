@@ -78,3 +78,7 @@ The persistent store and job root use `0700`. Jobs retain at most ten completed 
 - No firmware flashing, subscription aggregation, node-policy editor or LTE configuration.
 - No watchdog proving all LAN devices can reach every policy destination.
 - CI checks host-side behavior; hardware and live restart behavior need controlled validation.
+
+## DNS protection (0.2)
+
+The optional `mihomo-mini-dns.uc` module handles managed DNS generation, recursive API/provider group validation, an independent nftables guard and drift checks. Its procd watcher starts before WAN/dnsmasq when explicitly enabled. Worker transitions hold DNS closed while replacing/reloading the core; explicit direct/stop/TProxy-off actions disarm it. Existing recovery paths retain the DNS guard instead of silently downgrading protected DNS. Settings live in `dns.json`, original DNS in `dns.original.json`, runtime arming/checks in private RAM files. See [packet flow, states and limits](dns-protection.md).

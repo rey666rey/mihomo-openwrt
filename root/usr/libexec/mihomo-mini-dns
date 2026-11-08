@@ -1,0 +1,28 @@
+#!/usr/bin/ucode
+'use strict';
+import * as fs from 'fs';
+import * as d from 'mihomo-mini-dns';
+
+try {
+	switch (ARGV[0]) {
+	case 'boot': d.boot(); break;
+	case 'disarm': d.disarm(); break;
+	case 'remove': d.disable(); break;
+	case 'status': printf('%J\n', d.summary()); break;
+	case 'watch': {
+		let next = 0;
+		while (true) {
+			try {
+				d.tick();
+				if (d.armed() && !fs.access(d.TMP + '/lock') && time() >= next) {
+					try { d.release(); } catch(e) { d.hold(); }
+					next = time() + 15;
+				}
+			} catch(e) { /* Remain closed; status reports the missing or conflicting guard. */ }
+			system(['/bin/sleep', '2']);
+		}
+		break;
+	}
+	default: die('Unknown DNS guard operation.');
+	}
+} catch(e) { print('DNS operation failed: ', e.message || e, '\n'); exit(1); }

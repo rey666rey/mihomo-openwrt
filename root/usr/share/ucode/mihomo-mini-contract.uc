@@ -1,3 +1,4 @@
+import * as dns from 'mihomo-mini-dns';
 // Deliberately conservative YAML guard for this router's fixed network contract.
 // Full YAML parsing and provider validation are performed by mihomo -t afterwards.
 export function contract(text) {
@@ -37,8 +38,10 @@ export function contract(text) {
 	for (let k, v in required)
 		if (roots[k] != v) return 'Для текущей схемы требуется ' + k + ': ' + v;
 	for (let k, v in { 'tun.enable': 'false', 'dns.enable': 'true', 'dns.listen': '127.0.0.1:1053',
-		'dns.enhanced-mode': 'fake-ip', 'dns.fake-ip-range': '198.18.0.1/16' })
+		'dns.fake-ip-range': '198.18.0.1/16' })
 		if (children[k] != v) return 'Сохраните параметр ' + k + ': ' + v + ' (отступ — два пробела).';
+	if (index(['fake-ip', 'redir-host'], children['dns.enhanced-mode']) < 0) return 'Поддерживаются режимы DNS fake-ip и redir-host.';
+	if (dns.settings().enabled && !dns.valid_config(text)) return 'DNS-защита включена: изменяйте раздел dns на вкладке «DNS-защита».';
 	if (!roots.secret || !match(roots.secret, /^[a-zA-Z0-9_-]{16,128}$/))
 		return 'Поле secret должно содержать 16–128 букв, цифр, знаков _ или - без кавычек.';
 	for (let k in ['external-controller-tls', 'external-controller-unix', 'external-controller-pipe'])

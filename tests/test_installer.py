@@ -139,7 +139,7 @@ os.execv({real_cp!r}, [{real_cp!r}]+sys.argv[1:])
             p = self.root / path
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(f'previous file {i}\n')
-            p.chmod(0o755 if path.endswith('mihomo-mini-worker') else 0o644)
+            p.chmod(0o755 if path.endswith(('mihomo-mini-worker', 'mihomo-mini-dns')) else 0o644)
 
     def assert_unlocked(self):
         self.assertFalse((self.root / 'tmp/mihomo-mini/lock').exists())
@@ -159,7 +159,10 @@ os.execv({real_cp!r}, [{real_cp!r}]+sys.argv[1:])
         config = (self.root / 'etc/mihomo/config.yaml').read_bytes()
         self.run_installer('--yes')
         self.assertTrue(all(v is not None for v in self.app_snapshot().values()))
-        self.assertEqual((self.root / 'usr/libexec/mihomo-mini-worker').stat().st_mode & 0o777, 0o755)
+        for line in (self.dist / 'install.files').read_text().splitlines():
+            if line and not line.startswith('#'):
+                mode, _, target = line.split()
+                self.assertEqual((self.root / target).stat().st_mode & 0o777, int(mode, 8), target)
         self.run_installer('--uninstall', '--yes')
         self.assertTrue(all(v is None for v in self.app_snapshot().values()))
         self.assertEqual((self.root / 'etc/mihomo/config.yaml').read_bytes(), config)
@@ -167,6 +170,29 @@ os.execv({real_cp!r}, [{real_cp!r}]+sys.argv[1:])
         self.assertNotIn('restart', self.log.read_text())
         self.assertNotIn('start', self.log.read_text())
         self.assertNotIn('stop', self.log.read_text())
+
+    def test_active_dns_is_released_before_uninstall(self):
+        helper = self.dist / 'root/etc/init.d/mihomo-mini-dns'
+        self.executable(helper, '#!/bin/sh\nprintf "dns-watcher %s\\n" "$*" >> "$TEST_LOG"\n')
+        import hashlib
+        manifest = self.dist / 'SHA256SUMS'
+        lines = manifest.read_text().splitlines()
+        manifest.write_text('\n'.join(hashlib.sha256(helper.read_bytes()).hexdigest() + '  root/etc/init.d/mihomo-mini-dns' if line.endswith('  root/etc/init.d/mihomo-mini-dns') else line for line in lines) + '\n')
+        self.run_installer('--yes')
+        (self.root / 'etc/mihomo-mini/dns.json').write_text('{"enabled":true}')
+        self.run_installer('--uninstall', '--yes')
+        self.assertIn('dns-watcher stop', self.log.read_text())
+        self.assertIn('dns-watcher disable', self.log.read_text())
+        self.assertTrue(all(v is None for v in self.app_snapshot().values()))
+
+    def test_failed_dns_release_blocks_uninstall(self):
+        self.run_installer('--yes')
+        before = self.app_snapshot()
+        (self.root / 'etc/mihomo-mini/dns.json').write_text('{"enabled":true}')
+        r = self.run_installer('--uninstall', '--yes', success=False, TEST_UCODE_FAIL='1')
+        self.assertIn('Could not release owned DNS protection', r.stderr)
+        self.assertEqual(self.app_snapshot(), before)
+        self.assert_unlocked()
 
     def test_payload_tampering_is_rejected(self):
         p = self.dist / 'root/usr/share/ucode/mihomo-mini.uc'

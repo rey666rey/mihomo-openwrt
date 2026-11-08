@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { sha256, sha256_file } from 'digest';
 import { contract } from 'mihomo-mini-contract';
 import * as m from 'mihomo-mini';
+import * as dns from 'mihomo-mini-dns';
 
 let id = ARGV[0];
 if (!match(id || '', /^job-[a-zA-Z0-9]+$/)) exit(1);
@@ -81,18 +82,20 @@ function wait_ready(tp) {
 	while (time() < deadline) {
 		active();
 		if (api('GET', '/version').ok && (!tp || m.capture('nft list table inet mihomo_tproxy_safe').code == 0)) {
-			if (!tp || proxy_check()) return;
+			return;
 		}
 		m.run(['/bin/sleep', '1'], 2000);
 	}
 	die('Служба не прошла проверку готовности.');
 }
 function stop() {
+	dns.hold();
 	m.cleanup(); checked(['/etc/init.d/mihomo', 'stop'], 15000); m.cleanup();
 }
 function start_mode(tp) {
+	if (tp && dns.settings().enabled) dns.arm(true); else dns.disarm();
 	active(); setting('enabled', '1'); setting('tproxy_enabled', tp ? '1' : '0'); commit();
-	active(); checked(['/etc/init.d/mihomo', 'start'], 15000); wait_ready(tp);
+	active(); checked(['/etc/init.d/mihomo', 'start'], 15000); wait_ready(tp); dns.release();
 }
 function recover_mode(before) {
 	if (m.stopped_flag()) { m.direct(); return; }
@@ -127,7 +130,7 @@ function apply_config() {
 	m.atomic(m.STORE + '/config.previous.yaml', old);
 	let changed = false;
 	try {
-		active(); m.atomic(m.CONFIG, req.content); changed = true;
+		active(); dns.hold(); m.atomic(m.CONFIG, req.content); changed = true;
 		if (before.running) {
 			progress('Применение и проверка конфигурации…');
 			if (!api('PUT', '/configs?force=false', { path: m.CONFIG }, secret(old)).ok)
@@ -136,6 +139,7 @@ function apply_config() {
 			if (!api('GET', '/version').ok || (before.tproxy && !proxy_check()))
 				die('Конфигурация не прошла проверку подключения.');
 		}
+		dns.release();
 		return before.running ? 'Конфигурация применена. Выбор существующих узлов сохранён.' : 'Конфигурация сохранена. Mihomo остаётся выключенным.';
 	} catch(e) {
 		if (changed) {
@@ -143,7 +147,7 @@ function apply_config() {
 			if (before.running && !m.stopped_flag()) {
 				let reverted = api('PUT', '/configs?force=false', { path: m.CONFIG }, secret(req.content));
 				if (!reverted.ok) reverted = api('PUT', '/configs?force=false', { path: m.CONFIG }, secret(old));
-				if (reverted.ok) { restore_selectors(saved); active(); }
+				if (reverted.ok) { restore_selectors(saved); active(); dns.release(); }
 				else { recover_mode(before); restore_selectors(saved); }
 			}
 		}
@@ -293,14 +297,14 @@ function replace_core(rollback) {
 			// Rollback uses the already retained same-directory inode: no free
 			// space for another full copy is required, even after an ENOSPC.
 			if (!fs.rename(staged_old, m.CORE)) {
-				m.direct(); die('Не удалось восстановить ядро. Резерв сохранён, включён прямой интернет.');
+				die('Не удалось восстановить ядро. Резерв сохранён. ' + m.recovery_failure());
 			}
 		}
 		for (let path in [staged_new, staged_old, staged_backup]) fs.unlink(path);
 		if (m.stopped_flag()) m.direct();
 		else if (service_touched && before.running) {
 			try { recover_mode(before); restore_selectors(saved); }
-			catch(recovery) { m.direct(); die('Прежнее ядро возвращено, но запуск не удался. Включён прямой интернет.'); }
+			catch(recovery) { die('Прежнее ядро возвращено, но запуск не удался. ' + m.recovery_failure()); }
 		}
 		die('Обновление отменено; прежнее ядро сохранено. ' + (e.message || e));
 	}
@@ -313,6 +317,64 @@ function diagnostics() {
 	let s = m.status();
 	result.diagnostics = { direct, dns, proxy: s.running ? proxy_check() : null, api: s.running ? api('GET', '/version').ok : null };
 	return 'Проверка завершена. Результаты относятся к запросам с роутера.';
+}
+function check_dns() {
+	progress('Проверка DNS-защиты…');
+	let s = dns.summary();
+	if (s.armed) { try { dns.release(); } catch(e) { dns.hold(); } s = dns.summary(); }
+	let available = m.capture("nslookup -type=a www.iana.org 127.0.0.1:1056 | grep -q '^Address: 198[.]18[.]'").code == 0 && m.capture("nslookup -type=a www.iana.org 127.0.0.1 | grep '^Address: ' | grep -Ev '^Address: (198[.]18[.]|127[.])'").code == 0;
+	let proxy = s.armed ? proxy_check() : null;
+	let checked = { at: time(), state: s.state, available, proxy,
+		guard: s.guard, config: s.config, scope: 'router-config-and-query',
+		note: 'Проверены правила роутера и доступность DNS. Собственный DoH приложений и все устройства не проверялись.' };
+	dns.write(m.TMP + '/dns-check.json', checked); result.dns_check = checked;
+	if (s.armed && (!available || !proxy || s.state != 'active')) die('Проверка DNS не пройдена. Прямой DNS не включался.');
+	return 'Проверка роутера завершена. Результат и границы проверки показаны на вкладке DNS.';
+}
+function configure_dns() {
+	let before = m.status(), old = fs.readfile(m.CONFIG), prev = dns.settings(), was_armed = !!dns.armed();
+	if (!before.running || !before.tproxy) die('Сначала включите Mihomo и TProxy.');
+	if (req.base != m.hash_config()) die('Конфигурация изменилась. Обновите страницу перед включением защиты.');
+	let o;
+	try { o = json(req.content); } catch(e) { die('Некорректные параметры DNS.'); }
+	dns.check_options(o); o.enabled = true;
+	progress('Проверка клиентского DNS и нового конфига…');
+	let text = dns.candidate(old, o), error = contract(text);
+	// Existing managed DNS may only change through this transaction.
+	if (error && !(prev.enabled && index(error, 'DNS-защита включена:') == 0)) die(error);
+	m.save(dir + '/candidate.yaml', text);
+	let wd = dir + '/check'; fs.mkdir(wd, 0o700);
+	for (let name in (fs.lsdir('/etc/mihomo') || [])) {
+		if (name == 'cache.db' || index(name, 'config') == 0) continue;
+		fs.symlink('/etc/mihomo/' + name, wd + '/' + name);
+	}
+	if (system(m.quote(m.CORE) + ' -t -f ' + m.quote(dir + '/candidate.yaml') + ' -d ' + m.quote(wd)
+		+ ' >' + m.quote(dir + '/validation.private.log') + ' 2>&1', 45000) != 0) die('Mihomo отклонил подготовленный DNS-конфиг.');
+	active();
+	if (req.base != m.hash_config()) die('Конфигурация изменилась во время проверки. Повторите действие.');
+	let saved = selectors();
+	m.atomic(m.STORE + '/config.previous.yaml', old);
+	if (!fs.access(m.STORE + '/dns.original.json')) dns.write(m.STORE + '/dns.original.json', { block: dns.block(old).text });
+	try {
+		progress('Применение DNS-защиты…');
+		dns.write(dns.STORE + '/dns.json', o); if (was_armed) dns.hold(); active();
+		m.atomic(m.CONFIG, text);
+		if (!api('PUT', '/configs?force=false', { path: m.CONFIG }).ok) die('API не принял DNS-конфиг.');
+		restore_selectors(saved); active();
+		if (!proxy_check()) die('Новый DNS не прошёл проверку запроса через VPN.');
+		active(); dns.arm(true); dns.release();
+		check_dns(); active();
+		checked(['/etc/init.d/mihomo-mini-dns', 'enable']);
+		checked(['/etc/init.d/mihomo-mini-dns', 'start']);
+		return 'DNS-защита включена. Клиенты используют fake-IP и группы сервисов. Системный DNS работает через HTTPS.';
+	} catch(e) {
+		m.atomic(m.CONFIG, old); dns.write(dns.STORE + '/dns.json', prev);
+		if (!was_armed) dns.disarm(); else dns.hold();
+		let reverted = api('PUT', '/configs?force=false', { path: m.CONFIG });
+		if (reverted.ok) { restore_selectors(saved); if (was_armed) dns.release(); }
+		if (m.stopped_flag()) m.direct();
+		die('Настройка DNS отменена. ' + (was_armed ? 'Прежняя защита сохранена. ' : 'Восстановлен прежний режим DNS. ') + (e.message || e));
+	}
 }
 function action() {
 	switch (req.action) {
@@ -328,7 +390,11 @@ function action() {
 		checked(['/etc/init.d/mihomo', 'enable']); return 'Автозапуск включён с текущим режимом.';
 	}
 	case 'autostart_off': checked(['/etc/init.d/mihomo', 'disable']); return 'Автозапуск отключён.';
-	case 'stop': stop(); return 'Mihomo остановлен, правила TProxy сняты.';
+	case 'dns_enable': return configure_dns();
+	case 'dns_disable': dns.disable(); return 'Защита DNS выключена. Восстановлен обычный DNS домашней сети.';
+	case 'dns_options': return 'Узел выбирается в группе сервиса.';
+	case 'dns_check': return check_dns();
+	case 'stop': dns.disarm(); stop(); setting('enabled', '0'); commit(); return 'Mihomo остановлен, правила TProxy сняты.';
 	default: {
 		let before = m.status();
 		if (req.action == 'start' && before.running) return 'Mihomo уже работает.';
@@ -342,7 +408,7 @@ function action() {
 		catch(e) {
 			if (!m.stopped_flag()) {
 				try { recover_mode(before); if (before.running) restore_selectors(saved); }
-				catch(recovery) { m.direct(); die('Запуск не удался. Включён прямой интернет, автозапуск отключён.'); }
+				catch(recovery) { die('Запуск не удался. ' + m.recovery_failure()); }
 			}
 			die('Новый режим не прошёл проверку. Прежний режим восстановлен.');
 		}

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as m from 'mihomo-mini';
+import * as dns from 'mihomo-mini-dns';
 const root = '/tmp/mihomo-mini-faults';
 function assert(ok, text) { if (!ok) die('FAIL: ' + text); }
 function execute(action, content, base) {
@@ -76,3 +77,28 @@ assert(index(fs.readfile(m.CORE),'# NEW') >= 0,'candidate activated');
 assert(fs.readfile(m.STORE+'/core.previous') == oldCore,'previous core committed after readiness');
 clean_staging(); fs.unlink(root+'/no-hardlinks');
 print('PASS: verified gzip update, memory budget, copy fallback and backup commit\n');
+
+// New DNS transactions run through the real worker with isolated kernel/API stubs.
+let opts = { resolvers:[dns.ENDPOINTS[0],dns.ENDPOINTS[1]] };
+let beforeDNS = fs.readfile(m.CONFIG);
+fs.writefile(root+'/fail-dns-proxy','1');
+r = execute('dns_enable', sprintf('%J', opts), m.hash_config());
+assert(r.state == 'error' && fs.readfile(m.CONFIG) == beforeDNS, 'failed initial DNS probe restores original config');
+assert(!dns.armed() && !dns.settings().enabled, 'failed activation restores original unprotected state');
+fs.unlink(root+'/fail-dns-proxy');
+fs.writefile(m.TMP+'/fail-dns-rules','1');
+r = execute('dns_enable', sprintf('%J', opts), m.hash_config());
+assert(r.state == 'error' && fs.readfile(m.CONFIG) == beforeDNS && !dns.armed(), 'kernel failure rolls back DNS activation');
+fs.unlink(m.TMP+'/fail-dns-rules');
+r = execute('dns_enable', sprintf('%J', opts), m.hash_config());
+assert(r.state == 'done' && dns.armed() && dns.settings().enabled, 'successful DNS transaction activates guard');
+let protectedConfig = fs.readfile(m.CONFIG), previousSettings = sprintf('%J', dns.settings());
+fs.writefile(root+'/fail-dns-proxy','1');
+opts.resolvers = [dns.ENDPOINTS[2]];
+r = execute('dns_enable', sprintf('%J', opts), m.hash_config());
+assert(r.state == 'error' && fs.readfile(m.CONFIG) == protectedConfig, 'failed reconfiguration restores protected config');
+assert(dns.armed() && sprintf('%J',dns.settings()) == previousSettings, 'failed reconfiguration retains existing protection');
+fs.unlink(root+'/fail-dns-proxy');
+r = execute('stop');
+assert(r.state == 'done' && !dns.armed() && dns.settings().enabled, 'explicit stop pauses protection and retains preference');
+print('PASS: DNS worker activation, failed probes, kernel failure, protected rollback and explicit stop\n');

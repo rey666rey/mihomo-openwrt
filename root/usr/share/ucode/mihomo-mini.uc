@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { sha256 } from 'digest';
+import * as dns from 'mihomo-mini-dns';
 
 export const TMP = '/tmp/mihomo-mini';
 export const STORE = '/etc/mihomo-mini';
@@ -62,6 +63,7 @@ export function cleanup() {
 };
 export function direct() {
 	init(); save(TMP + '/emergency', '1');
+	try { dns.disarm(); } catch(e) { return { ok: false, error: '' + (e.message || e) }; }
 	run(['/etc/init.d/mihomo', 'disable']);
 	run(['/sbin/uci', 'set', 'mihomo.main.enabled=0']);
 	run(['/sbin/uci', 'set', 'mihomo.main.tproxy_enabled=0']);
@@ -71,6 +73,10 @@ export function direct() {
 	if (s.running || s.tproxy || s.autostart)
 		return { ok: false, error: 'Не удалось полностью отключить Mihomo. Проверьте состояние службы по SSH.' };
 	return { ok: true, message: 'Mihomo и TProxy выключены. Автозапуск отключён.' };
+};
+export function recovery_failure() {
+	if (dns.armed()) { cleanup(); return dns.failure(); }
+	direct(); return 'Включён прямой интернет, автозапуск отключён.';
 };
 export function status() {
 	let service = {};
@@ -91,12 +97,12 @@ export function status() {
 		config_backup: fs.access(STORE + '/config.previous.yaml'), core_backup: fs.access(STORE + '/core.previous'),
 		busy: lock?.id || null, latest: readjson(TMP + '/release.json'),
 		journal: readjson(TMP + '/journal.json') || [],
-		emergency: stopped_flag() };
+		emergency: stopped_flag(), dns: dns.summary() };
 };
 export function enqueue(action, content, base) {
 	init(); status();
 	if (index(['start', 'stop', 'restart', 'tproxy_on', 'tproxy_off', 'autostart_on', 'autostart_off',
-		'validate', 'apply', 'check_update', 'update', 'rollback_core', 'diagnostics'], action) < 0)
+		'dns_enable', 'dns_disable', 'dns_options', 'dns_check', 'validate', 'apply', 'check_update', 'update', 'rollback_core', 'diagnostics'], action) < 0)
 		return { ok: false, error: 'Неизвестное действие.' };
 	if (type(content) != 'string' || length(content) > 524288) return { ok: false, error: 'Конфигурация слишком велика.' };
 	if (!fs.mkdir(TMP + '/lock', 0o700)) return { ok: false, error: 'Другая задача ещё выполняется.' };
