@@ -56,4 +56,4 @@ This conservative check runs **before** the actual Mihomo YAML validation. It is
 
 The UI can verify requests originating on the router. It cannot establish that every phone, console, app or policy is working.
 
-Version 0.2 additionally accepts `redir-host`; DNS protection manages an exact generated DNS section, the separate `mihomo_mini_dns` table, `br-lan`, LAN router `192.168.1.1` and the monitoring exception `192.168.1.111`. It requires nftables NAT support. See [DNS protection](dns-protection.md).
+Version 0.2 additionally accepts `redir-host`; DNS protection manages an exact generated DNS section, the separate `mihomo_mini_dns` table, `br-lan`, LAN router `192.168.1.1` and the source exceptions `192.168.1.111` (monitoring) and `192.168.1.112`. It requires nftables NAT support. See [DNS protection](dns-protection.md).

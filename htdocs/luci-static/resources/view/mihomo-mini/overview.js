@@ -5,6 +5,8 @@
 'require poll';
 
 var statusRPC = rpc.declare({ object: 'mihomo-mini', method: 'status', expect: {} });
+var finlandSquadsRPC = rpc.declare({ object: 'mihomo-mini', method: 'finland_squads', expect: {} });
+var germanySquadsRPC = rpc.declare({ object: 'mihomo-mini', method: 'germany_squads', expect: {} });
 var configRPC = rpc.declare({ object: 'mihomo-mini', method: 'config', params: ['previous'], expect: {} });
 var jobRPC = rpc.declare({ object: 'mihomo-mini', method: 'job', params: ['id'], expect: {} });
 var actionRPC = rpc.declare({ object: 'mihomo-mini', method: 'action', params: ['action', 'content', 'base'], expect: {} });
@@ -214,9 +216,29 @@ return view.extend({
 			E('a', { 'href': 'https://github.com/MetaCubeX/mihomo/releases', 'target': '_blank', 'rel': 'noopener noreferrer' }, 'Официальные выпуски Mihomo ↗')
 		])]);
 		self.diagResult = E('div', {}, 'Проверка ещё не выполнялась.'); self.journal = E('pre', { 'class': 'mm-journal' });
+		function squadPanel(title, key, readSquads) {
+			var squads = E('div', { 'aria-live': 'polite' });
+			function showSquads() {
+				return readSquads().then(function(r) {
+					if (!r.ok) throw new Error(r.error || 'Не удалось получить список.');
+					var rows = r.squads.map(function(s) {
+						return E('tr', {}, [E('td', {}, s.name), E('td', {}, s.exit_ip + ' · ' + s.country),
+							E('td', {}, s.ipify_ip ? s.ipify_ip + (s.ipify_country ? ' · ' + s.ipify_country : '') : '—'),
+							E('td', {}, new Date(s.checked_at).toLocaleString('ru-RU'))]);
+					});
+					squads.replaceChildren(rows.length ? E('table', { 'class': 'table' }, [
+						E('thead', {}, E('tr', {}, ['Сквад', 'IPv4 · Cloudflare', 'IPv4 · ipify', 'Проверен'].map(function(t) { return E('th', {}, t); }))),
+						E('tbody', {}, rows)
+					]) : E('p', {}, 'В списке пока нет подтверждённых выходов.'));
+			}).catch(function(e) { squads.textContent = e.message; });
+			}
+			return panel([E('h3', {}, title), button(key, 'Показать сквады и IP', showSquads), squads]);
+		}
 		var diag = E('section', { 'role': 'tabpanel', 'hidden': '' }, [
 			panel(heading('Подключение', 'Проверки выполняются с роутера. Они не заменяют проверку интернета на телефоне или компьютере.').concat([
 				button('diagnostics', 'Проверить подключение', function() { self.act('diagnostics'); }), self.diagResult])),
+			squadPanel('Germany Aggregated', 'germanySquads', germanySquadsRPC),
+			squadPanel('Finland Aggregated', 'finlandSquads', finlandSquadsRPC),
 			panel([E('h3', {}, 'Журнал приложения'), E('p', { 'class': 'mm-muted' }, 'Последние 30 операций. Без содержимого конфига и адресов подписок. Журнал очищается при перезагрузке.'), self.journal])
 		]);
 		self.dnsStatus = E('strong'); self.dnsResult = E('p', { 'class': 'mm-note', 'aria-live': 'polite' });

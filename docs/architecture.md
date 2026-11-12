@@ -82,3 +82,9 @@ The persistent store and job root use `0700`. Jobs retain at most ten completed 
 ## DNS protection (0.2)
 
 The optional `mihomo-mini-dns.uc` module handles managed DNS generation, recursive API/provider group validation, an independent nftables guard and drift checks. Its procd watcher starts before WAN/dnsmasq when explicitly enabled. Worker transitions hold DNS closed while replacing/reloading the core; explicit direct/stop/TProxy-off actions disarm it. Existing recovery paths retain the DNS guard instead of silently downgrading protected DNS. Settings live in `dns.json`, original DNS in `dns.original.json`, runtime arming/checks in private RAM files. See [packet flow, states and limits](dns-protection.md).
+
+## German and Finnish squad observations
+
+The read-only `mihomo-mini.germany_squads` and `mihomo-mini.finland_squads` RPCs read the respective downloaded JSON-format YAML providers in `/etc/mihomo/proxies/`. Each returns squad names, observed IPv4 addresses for Cloudflare and ipify, available country codes and observation timestamps. Only these metadata fields are exposed. Provider access credentials stay in the provider file.
+
+LuCI displays this data in the Germany Aggregated and Finland Aggregated panels under Diagnostics. The external aggregator assigns stable names to source/squad pairs and maintains the observations. A destination-specific IP measurement can differ from the exit seen by another website. The table updates from the downloaded provider when the user presses the button.

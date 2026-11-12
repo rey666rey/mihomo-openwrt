@@ -1,7 +1,7 @@
 {
   "luci-app-mihomo-mini": {
     "description": "Manage the local Mihomo service and its configuration",
-    "read": { "ubus": { "mihomo-mini": ["status", "job"] } },
+    "read": { "ubus": { "mihomo-mini": ["status", "job", "germany_squads", "finland_squads"] } },
     "write": { "ubus": { "mihomo-mini": ["config", "action", "direct"] } }
   }
 }

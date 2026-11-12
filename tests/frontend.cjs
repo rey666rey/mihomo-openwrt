@@ -19,6 +19,8 @@ let permission = true, config = 'example: yaml', job = null, poller, jobUnavaila
 const rpc = { declare: ({method}) => async (...args) => {
   calls.push([method,...args]);
   if (method === 'status') return {...state};
+  if (method === 'germany_squads') return {ok:true,squads:[{name:'🇩🇪 MASTER · s1 v2',exit_ip:'192.0.2.1',country:'DE',ipify_ip:'198.51.100.1',ipify_country:'RU',checked_at:'2026-11-08T14:21:37+00:00'}]};
+  if (method === 'finland_squads') return {ok:true,squads:[{name:'🇫🇮 DOG · Finland',exit_ip:'192.0.2.2',country:'FI',ipify_ip:'198.51.100.2',ipify_country:'RU',checked_at:'2026-11-08T14:41:48+00:00'}]};
   if (method === 'config') return {ok:true,content:config,hash:state.config_hash};
   if (method === 'action') { job={state:'running',action:args[0],message:'working'}; return {ok:true,id:'job-abcdef'}; }
   if (method === 'job') return jobUnavailable ? {ok:false,error:'missing'} : {ok:true,result:job};
@@ -31,6 +33,14 @@ const app = new Function('view','rpc','ui','poll','E','L','window',source)({exte
 (async()=>{
   const root = app.render(state);
   assert(root);
+  await app.buttons.germanySquads.click();
+  await app.buttons.finlandSquads.click();
+  const rendered = JSON.stringify(root);
+  assert(rendered.includes('IPv4 · Cloudflare'));
+  assert(rendered.includes('192.0.2.1 · DE'));
+  assert(rendered.includes('198.51.100.1 · RU'));
+  assert(rendered.includes('192.0.2.2 · FI'));
+  assert(rendered.includes('198.51.100.2 · RU'));
   assert(app.buttons.start.disabled);
   assert.equal(app.dnsStatus.textContent,'Правила защиты включены');
   assert(!app.buttons.dnsEnable.disabled);

@@ -2,8 +2,22 @@
 import * as fs from 'fs';
 import * as m from 'mihomo-mini';
 
+function squad_observations(country, path) {
+	let feed = m.readjson(path);
+	if (type(feed?.proxies) != 'array') return { ok: false, error: 'Список проверенных сквадов ещё не загружен.' };
+	let squads = [];
+	for (let p in feed.proxies) {
+		if (p['x-exit-country'] != country || !p['x-exit-ip'] || !p['x-checked-at']) continue;
+		push(squads, { name: p.name, exit_ip: p['x-exit-ip'], country,
+			ipify_ip: p['x-ipify-ip'], ipify_country: p['x-ipify-country'], checked_at: p['x-checked-at'] });
+	}
+	return { ok: true, squads };
+};
+
 return { 'mihomo-mini': {
 	status: { call: function() { return m.status(); } },
+	germany_squads: { call: function() { return squad_observations('DE', '/etc/mihomo/proxies/germany-aggregated.yaml'); } },
+	finland_squads: { call: function() { return squad_observations('FI', '/etc/mihomo/proxies/finland-aggregated.yaml'); } },
 	config: {
 		args: { previous: false },
 		call: function(req) {

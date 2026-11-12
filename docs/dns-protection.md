@@ -4,7 +4,7 @@
 
 ## What it controls
 
-Version 0.2 adds opt-in DNS protection for the **reference integration**, not an arbitrary OpenWrt network. It covers `br-lan`, router-originated classic DNS and the existing loopback Mihomo DNS service. The LTE network and monitoring source `192.168.1.111` retain their independent policy. Do not enable it on another topology without adapting and testing the fixed network contract.
+Version 0.2 adds opt-in DNS protection for the **reference integration**, not an arbitrary OpenWrt network. It covers `br-lan`, router-originated classic DNS and the existing loopback Mihomo DNS service. The LTE network, monitoring source `192.168.1.111` and source `192.168.1.112` retain their independent policy. Both source addresses bypass the client DNS redirect and forwarding guard. Do not enable it on another topology without adapting and testing the fixed network contract.
 
 The DNS tab requires a running Mihomo and TProxy. Select HTTPS resolvers there. Choose exit nodes in each service’s existing selector. The reference config must provide the selectors `🌐 Web Stable` and `Whoer.net`.
 
@@ -53,7 +53,7 @@ The DNS tab reports **rule state**, loopback-listener presence and a timestamped
 
 Proxy-server bootstrap and direct-exit DNS queries use HTTPS outside the VPN. This exception is displayed in the UI. Resolver endpoints use literal IP addresses to avoid plaintext resolver-hostname bootstrap.
 
-A browser/app's own DoH over HTTPS can bypass the system resolver and follow another traffic policy. Review Secure DNS, encrypted-DNS profiles and Apple Private Relay on each device. Port-53 interception cannot identify all encrypted DNS carried over port 443. No HTTPS interception or certificate installation is performed. Clients attached to the upstream router and excluded LTE/monitoring traffic are outside this protection.
+A browser/app's own DoH over HTTPS can bypass the system resolver and follow another traffic policy. Review Secure DNS, encrypted-DNS profiles and Apple Private Relay on each device. Port-53 interception cannot identify all encrypted DNS carried over port 443. No HTTPS interception or certificate installation is performed. Clients attached to the upstream router and excluded LTE/monitoring traffic and source `192.168.1.112` are outside this protection.
 
 For an actual network acceptance test, use new uncached DNS names from LAN devices, UDP and TCP queries to both the router and a manually specified external resolver, and captures on the physical WAN. Validate direct-mode recovery and local names separately. Preserve existing selector choices. Do not publish raw captures or configs; they can contain browsing data and secrets.
 
@@ -65,7 +65,7 @@ The normal recovery control is **Control → Direct internet**. From a root SSH 
 
 При первой установке выполните по SSH `/etc/init.d/mihomo-mini-dns start`, затем включите защиту в LuCI. Эта команда запускает клиентский DNS на порту 1056. Если он недоступен, приложение откатывает включение защиты.
 
-Защита включается отдельно на вкладке **«DNS-защита»** и работает для основной сети эталонной установки. Клиентский dnsmasq на порту 1056 передаёт внешние запросы Mihomo. Устройства получают fake-IP, а выход выбирается правилами сервиса. Системный dnsmasq на порту 53 возвращает реальные адреса через отдельно настроенный DNS. Локальные имена, включая `torrserver.home.arpa`, обслуживает dnsmasq. LTE и мониторинг `192.168.1.111` исключены.
+Защита включается отдельно на вкладке **«DNS-защита»** и работает для основной сети эталонной установки. Клиентский dnsmasq на порту 1056 передаёт внешние запросы Mihomo. Устройства получают fake-IP, а выход выбирается правилами сервиса. Системный dnsmasq на порту 53 возвращает реальные адреса через отдельно настроенный DNS. Локальные имена, включая `torrserver.home.arpa`, обслуживает dnsmasq. LTE, мониторинг `192.168.1.111` и адрес `192.168.1.112` исключены. Для обоих адресов пропускаются перенаправление клиентского DNS и ограничения цепочки forward_guard.
 
 Падение ядра или VPN не включает прямой DNS. Явная остановка Mihomo, отключение TProxy и кнопка **«Прямой интернет»** снимают защиту. Настройка сохраняется отдельно от текущего состояния. При выключенном автозапуске ядра после перезагрузки обычный интернет доступен без Mihomo.
 

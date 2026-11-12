@@ -121,6 +121,7 @@ export function rules(blocked) {
   type nat hook prerouting priority -100; policy accept;
   iifname != "br-lan" return
   ip saddr 192.168.1.111 return
+  ip saddr 192.168.1.112 return
   meta l4proto { tcp, udp } th dport 53 counter redirect to :` + port + `
  }
  chain output_guard {
@@ -132,6 +133,7 @@ export function rules(blocked) {
   type filter hook forward priority -1; policy accept;
   iifname != "br-lan" return
   ip saddr 192.168.1.111 return
+  ip saddr 192.168.1.112 return
   meta l4proto { tcp, udp } th dport { 53, 853 } counter reject
   ip daddr 198.18.0.0/16 counter reject
   meta nfproto ipv6 ip6 daddr != { fc00::/7, fe80::/10, ff00::/8 } counter reject
